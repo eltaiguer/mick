@@ -231,7 +231,7 @@ import MickCore
         let e2 = try start(temp2, sys2)
         defer { e2.stop() }
         #expect(e2.state.today.ignored == 2)
-        let midnight = Calendar.current.startOfDay(for: t0).addingTimeInterval(24 * 3600)
+        let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: t0))!
         sys2.now = midnight.addingTimeInterval(-1)
         e2.poll()
         #expect(e2.state.today.ignored == 2)
