@@ -1,0 +1,6 @@
+.build/
+build/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.swiftpm/
