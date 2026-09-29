@@ -13,6 +13,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let onSetUp: () -> Void
     private let menu = NSMenu()
     private(set) var icon: MenuBarIcon?
+    /// Items added above Quit each time the menu is rebuilt (the debug Simulate menu).
+    var extraMenuItems: (() -> [NSMenuItem])? {
+        didSet { populate(menu) }
+    }
 
     init(engine: MickEngine, onSetUp: @escaping () -> Void) {
         self.engine = engine
@@ -103,6 +107,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(pause)
 
         menu.addItem(.separator())
+        if let extra = extraMenuItems?(), !extra.isEmpty {
+            extra.forEach(menu.addItem)
+            menu.addItem(.separator())
+        }
         let quit = NSMenuItem(title: "Quit Mick", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)

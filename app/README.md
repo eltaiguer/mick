@@ -15,8 +15,8 @@
     `MickMemory`, `ReminderRecord`: the §8 table, `nag_after`, `ignored_today` and its
     midnight rollover, the reminder log line), snooze, pause and quiet hours
     (`SnoozeOption`, `Controls`, `StatusNotice`; Stretch now is `Reminder.stretchNow`),
-    panel placement (`PanelPlacement`), and
-    the `state.json` and `config.json` models.
+    panel placement (`PanelPlacement`), the `state.json` and `config.json` models, and
+    the simulation scripts (`SimulationScenario`).
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
     tailer, the App Nap activity (`ActivityAssertion`), `reminders.jsonl`
@@ -24,7 +24,8 @@
     (`Sources/MickIO/Resources/moves.json`, a package resource so the app and
     `swift test` read the same file), and `MickEngine`, the one
     object that owns state, feeds live events to the reminder, runs its one-shot timer
-    and that the app observes.
+    and that the app observes, plus `Simulation`/`SimulationRun` (temporary homes and
+    scenario playback).
 - `Mick/ReminderPanel.swift`: the production reminder panel from the panel spike (#1):
   a non-activating `NSPanel` that never becomes key, shown with `orderFrontRegardless()`.
 
@@ -46,12 +47,48 @@ only, and `open` doesn't pass it through, so run the binary directly to use one:
 MICK_HOME=/tmp/mick-try app/build/DerivedData/Build/Products/Release/Mick.app/Contents/MacOS/Mick
 ```
 
+## Simulation mode (debug builds only)
+
+Every Debug build has a **Simulate (debug)** submenu in the status item's menu, and
+accepts `--simulate [SCENARIO|all]`. Each scenario run gets its own fresh temporary
+Mick home (`$TMPDIR/mick-simulate-*/NN-<scenario>`, never `~/.mick` or `MICK_HOME`),
+already armed, with 1-minute thresholds and a 5-second show delay, and replays
+scripted hook events into that home's `events.jsonl` against the real panel. The
+scripts and their expectations are `SimulationScenario` in `MickCore`; `SimulationRun`
+in `MickIO` plays one against an engine.
+
+| Scenario | What you should see |
+|---|---|
+| `normal-run` | Panel 5 s after the prompt; closes within 2 s of the stop at 15 s |
+| `short-run` | Stop at 3 s: nothing shown |
+| `esc-interrupt` | No stop ever: the untouched panel closes 3 minutes after it appeared |
+| `permission-pause` | A `wait` at 10 s while the panel is up: closes within 2 s |
+| `three-sessions` | Three sessions, a re-prompt while visible, a prompt while settling: one reminder |
+| `hand-off` | A stops before its check, B is running: the check and the panel move to B |
+| `out-of-order` | A stop lands before its (older) prompt: session not running, nothing shown |
+
+```sh
+xcodebuild -project app/Mick.xcodeproj -scheme Mick -configuration Debug \
+  -derivedDataPath app/build/DerivedData build
+app/build/DerivedData/Build/Products/Debug/Mick.app/Contents/MacOS/Mick --simulate normal-run
+```
+
+A `--simulate` launch gives the app's own engine a temporary home too, and prints each
+step and check (`PASS`/`FAIL`) to stdout; every run also logs to its home's `log.txt`.
+Idle time is real by default, so the panel waits for a 3 s gap in your typing (the
+manual focus test). Ticking items changes what a scenario expects, so its checks will
+say FAIL; that's fine when you're poking at the panel. For unattended runs,
+`--simulate-idle SECONDS` fixes the idle reading, `--simulate-exit` quits with 0/1 when
+done, and `--simulate-via-menu` starts the scenario by choosing it in the menu. Release
+builds reject all of these.
+
 ## Tests
 
 ```sh
 (cd app/MickCore && swift test)   # unit and file-system tests, temporary MICK_HOME only
 tests/app/smoke.sh                # builds the app and runs its --smoke self-check (needs a GUI session)
 tests/hooks/test-hooks.sh         # the plugin's hook script
+tests/app/simulate.sh             # Debug build: plays every simulation scenario in the real app (~4 min; MICK_SIM_SKIP_SLOW=1 skips the 3-minute one), checks Release has none
 ```
 
 `Mick --smoke [--smoke-hook plugin/hooks/mick-event.sh]` runs inside the real app: it
