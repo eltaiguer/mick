@@ -37,8 +37,11 @@ public final class MickEngine {
     /// The reminder lifecycle: scheduled check, visible panel or settling (§7, §9).
     /// In memory only (§12.1): a relaunch drops it.
     public private(set) var reminder: Reminder
-    /// What the panel shows next. Fixed until routines (#8) and Mick's voice (#9).
+    /// What the panel shows if the move catalogue couldn't be loaded. With a catalogue,
+    /// each reminder gets a routine composed at show time (§10.1).
     public var reminderContent: ReminderContent = .standard
+    /// The move catalogue (`moves.json`, §10.1); nil if the bundled file was unusable.
+    public private(set) var moves: MoveCatalog?
 
     /// Called on the main actor after each batch of event lines is applied, with every
     /// line's result. Later tickets react to live prompts and stops here.
@@ -56,14 +59,18 @@ public final class MickEngine {
     @ObservationIgnored private var lastReset: SittingTimer.Reset?
     @ObservationIgnored private var reminderTimer: Timer?
     @ObservationIgnored public let activity: ActivityAssertion
+    @ObservationIgnored private var rng = SystemRandomNumberGenerator()
 
     /// - Parameter idleSeconds: seconds since the last keyboard or mouse input
     ///   (`SystemIdle.seconds` in the app; a fake in tests).
+    /// - Parameter moves: the move catalogue; nil loads the bundled `moves.json` at start.
     public init(home: MickHome, log: any MickLogger, tunables: Tunables = Tunables(),
                 clock: @escaping @Sendable () -> Date = { Date() },
                 idleSeconds: @escaping @MainActor () -> Double = { SystemIdle.seconds() },
-                activity: ActivityAssertion = ActivityAssertion()) {
+                activity: ActivityAssertion = ActivityAssertion(),
+                moves: MoveCatalog? = nil) {
         self.home = home
+        self.moves = moves
         self.activity = activity
         self.reminder = Reminder(timings: tunables.reminderTimings)
         self.log = log
@@ -82,6 +89,11 @@ public final class MickEngine {
         let now = clock()
         createdHome = try home.ensureExists()
         log.log("Mick starting; home \(home.url.path)\(createdHome ? " (created)" : "")")
+        if moves == nil {
+            do { moves = try MoveCatalog.bundled() } catch {
+                log.log("couldn't load the bundled moves.json (\(error)); reminders use a fixed routine")
+            }
+        }
 
         let (loadedConfig, cOutcome) = JSONFileStore.load(MickConfig.self, from: home.config, defaults: .defaults, now: now, log: log)
         let (validConfig, problems) = loadedConfig.validated()
@@ -266,7 +278,23 @@ public final class MickEngine {
     /// Runs whatever reminder timers are due (the one-shot timer calls this; tests call
     /// it after moving their clock).
     public func runReminderTimers() {
-        let effects = reminder.advance(state: state, config: config, now: clock(), idleSeconds: idleSeconds(), content: reminderContent)
+        let now = clock()
+        // A routine is composed whenever a check could show, and its rotation is only
+        // committed if the panel actually shows. Long sit is judged at show time (§10.1).
+        var composition: Routine.Composition?
+        var content = reminderContent
+        if reminder.check != nil, let moves {
+            let c = Routine.compose(Routine.kind(state, config: config, now: now), catalog: moves, rotation: state.rotation, using: &rng)
+            composition = c
+            content = .routine(c)
+        }
+        let effects = reminder.advance(state: state, config: config, now: now, idleSeconds: idleSeconds(), content: content)
+        if let composition, effects.contains(where: { if case .show = $0 { true } else { false } }) {
+            state.rotation.usedMoveIDs = composition.rotation.usedMoveIDs
+            state.rotation.lastAreas = composition.rotation.lastAreas
+            saveState()
+            log.log("routine (\(composition.kind == .longSit ? "long sit" : "normal")): \(composition.items.map(\.id).joined(separator: ", "))")
+        }
         deliver(effects)
     }
 

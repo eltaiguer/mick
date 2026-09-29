@@ -16,7 +16,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "MickCore"),
-        .target(name: "MickIO", dependencies: ["MickCore"]),
+        // moves.json ships here so the app and `swift test` read the same file.
+        .target(name: "MickIO", dependencies: ["MickCore"], resources: [.copy("Resources/moves.json")]),
         .testTarget(name: "MickCoreTests", dependencies: ["MickCore"]),
         .testTarget(name: "MickIOTests", dependencies: ["MickIO", "MickCore"]),
     ],
