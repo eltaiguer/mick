@@ -8,17 +8,44 @@ enum PluginCommands {
     static let addMarketplace = "/plugin marketplace add eltaiguer/mick"
     static let install = "/plugin install mick@mick"
     static let all = [addMarketplace, install]
+    /// Shown after Uninstall… (§13).
+    static let uninstall = "/plugin uninstall mick@mick"
+    static let removeMarketplace = "/plugin marketplace remove mick"
+}
+
+/// A command in monospace with a Copy button.
+struct CommandRow: View {
+    let command: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack {
+            Text(command)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(copied ? "Copied" : "Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(command, forType: .string)
+                copied = true
+            }
+            .accessibilityLabel("Copy \(command)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+    }
 }
 
 /// Onboarding (SPEC §6.6): what Mick does, the plugin install commands with copy
-/// buttons, and a line that turns into a check mark when the first event arrives.
-/// The open-at-login toggle arrives with Settings (#11).
+/// buttons, a line that turns into a check mark when the first event arrives, and the
+/// open-at-login toggle.
 struct OnboardingView: View {
     let engine: MickEngine
+    let loginItem: LoginItemController
     /// Mick's line, from the `onboarding` pool (§10.2).
     var line: String = "So you wanna be a contender. Install the thing."
     var onDone: () -> Void = {}
-    @State private var copied: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -36,12 +63,14 @@ struct OnboardingView: View {
                 Text("Run these two commands inside Claude Code:")
                     .foregroundStyle(.secondary)
                 ForEach(PluginCommands.all, id: \.self) { command in
-                    commandRow(command)
+                    CommandRow(command: command)
                 }
             }
 
             status
                 .accessibilityElement(children: .combine)
+
+            LoginItemToggle(controller: loginItem)
 
             HStack {
                 Spacer()
@@ -51,24 +80,6 @@ struct OnboardingView: View {
         }
         .padding(24)
         .frame(width: 460)
-    }
-
-    private func commandRow(_ command: String) -> some View {
-        HStack {
-            Text(command)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button(copied == command ? "Copied" : "Copy") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(command, forType: .string)
-                copied = command
-            }
-            .accessibilityLabel("Copy \(command)")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
     }
 
     @ViewBuilder private var status: some View {
@@ -116,10 +127,12 @@ enum OnboardingStatus: Equatable {
 @MainActor
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
     private let engine: MickEngine
+    private let loginItem: LoginItemController
     private var window: NSWindow?
 
-    init(engine: MickEngine) {
+    init(engine: MickEngine, loginItem: LoginItemController) {
         self.engine = engine
+        self.loginItem = loginItem
         super.init()
     }
 
@@ -139,7 +152,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let view = OnboardingView(engine: engine, line: engine.onboardingLine()) { [weak self] in self?.close() }
+        let view = OnboardingView(engine: engine, loginItem: loginItem, line: engine.onboardingLine()) { [weak self] in self?.close() }
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "Welcome to Mick"
         window.styleMask = [.titled, .closable]

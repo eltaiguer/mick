@@ -205,6 +205,9 @@ final class ReminderPanelController {
 
     var isVisible: Bool { panel.isVisible }
 
+    /// Hides the panel without settling anything (after Uninstall…).
+    func hide() { panel.orderOut(nil) }
+
     private func apply(_ effects: [Reminder.Effect]) {
         for effect in effects {
             switch effect {

@@ -18,8 +18,11 @@
     Mick's voice (`LinePool`, `LineCatalog`, `Lines`, `Voice`, `SpokenTime`,
     `VoiceRules`: the line pools of §10.2, opener precedence, rotation without repeats,
     `{minutes}`/`{hours}` spelled out, and the voice rules every line is linted against),
-    panel placement (`PanelPlacement`), the `state.json` and `config.json` models, and
-    the simulation scripts (`SimulationScenario`).
+    panel placement (`PanelPlacement`), the `state.json` and `config.json` models, the
+    forgiving reader for hand-edited config (`ConfigFile`: one bad value only costs that
+    value), the open-at-login status and its plain lines (`LoginItemStatus`,
+    `LoginItemNote`), Mick's bell (`BellSound`, an original ding synthesized into a WAV,
+    no sampled audio), and the simulation scripts (`SimulationScenario`).
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
     tailer, the App Nap activity (`ActivityAssertion`), `reminders.jsonl`
@@ -29,6 +32,16 @@
     object that owns state, feeds live events to the reminder, runs its one-shot timer
     and that the app observes, plus `Simulation`/`SimulationRun` (temporary homes and
     scenario playback).
+  - Also in `MickIO`: `ConfigWatcher` (hand edits to `config.json` are picked up
+    without a relaunch; the engine compares bytes, so its own saves don't count),
+    `LoginItemController` over `SMAppService.mainApp` (`SystemLoginItem`) or an
+    in-memory `RecordingLoginItem`, and `MickEngine.uninstall(loginItem:)`.
+- Open at login only touches the real system login item on a normal launch with
+  `MICK_HOME` unset. With `MICK_HOME` set (tests, simulation, `--smoke`) it's simulated
+  in memory: a login item started by macOS wouldn't see `MICK_HOME` (§12), and tests
+  must never register one. It's turned on once, on the launch that creates `~/.mick`.
+- `Mick/Settings.swift`: the Settings window (§6.5). `Mick/Uninstall.swift`: Uninstall…
+  (§13). `Mick/BellPlayer.swift`: plays the bell when a panel appears, if it's on.
 - `Mick/ReminderPanel.swift`: the production reminder panel from the panel spike (#1):
   a non-activating `NSPanel` that never becomes key, shown with `orderFrontRegardless()`.
 
@@ -107,7 +120,16 @@ appears for a short run, and stays after a stop once something is ticked.
 agent stops don't close; Pause, Resume and Snooze from the menu show Mick's line in the
 status line and never move `sitting_since` (the scenario ends paused so `smoke.sh` can
 check the pause survives a relaunch).
-Set `MICK_SMOKE_SNAPSHOT=/path/panel.png` to save a picture of the panel.
+`--smoke-settings settings` opens Settings from the menu, changes values and checks
+`config.json`, hand-edits the file (valid and invalid values) and checks Mick follows
+without a relaunch, and drives the simulated login item through approval and an
+error. `--smoke-settings uninstall` (with `--smoke-hook`) runs Uninstall… past its
+confirmation, checks the folder is gone and the login item unregistered, fires a hook
+to check it creates nothing, and quits through the uninstalled window. The bell is
+muted in the smoke check; `smoke.sh` checks from `log.txt` that it rang once for a
+panel with the sound on and never with it off.
+Set `MICK_SMOKE_SNAPSHOT=/path/panel.png` to save a picture of the panel
+(`MICK_SMOKE_SETTINGS_SNAPSHOT` and `MICK_SMOKE_UNINSTALL_SNAPSHOT` for those windows).
 `--smoke-idle SECONDS` (smoke only) replaces the real idle reading with a fixed one, so
 the sitting-timer scenarios in `smoke.sh` don't depend on whether someone is at the Mac.
 

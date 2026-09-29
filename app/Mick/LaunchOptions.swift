@@ -19,6 +19,15 @@ struct LaunchOptions: Equatable {
     /// `panel-snooze`, `stretch-now`, `menu-controls`). The caller prepares an armed
     /// state and a short show delay in `MICK_HOME`.
     var smokeReminder: SmokeReminder?
+    /// `--smoke-settings SCENARIO`: with `--smoke`, `settings` drives the Settings
+    /// window, hand edits to config.json and the (simulated) login item; `uninstall`
+    /// runs Uninstall… and quits the way it does for real.
+    var smokeSettings: SmokeSettings?
+
+    enum SmokeSettings: String, CaseIterable {
+        case settings
+        case uninstall
+    }
 
 #if DEBUG
     /// `--simulate [SCENARIO|all]` (debug builds only; SPEC §16): run against a fresh
@@ -87,6 +96,11 @@ struct LaunchOptions: Equatable {
                 guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
                 guard let scenario = SmokeReminder(rawValue: args[i + 1]) else { throw ParseError.badValue(arg) }
                 options.smokeReminder = scenario
+                i += 1
+            case "--smoke-settings":
+                guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
+                guard let scenario = SmokeSettings(rawValue: args[i + 1]) else { throw ParseError.badValue(arg) }
+                options.smokeSettings = scenario
                 i += 1
             case "--smoke-idle":
                 guard i + 1 < args.count else { throw ParseError.missingValue(arg) }

@@ -24,6 +24,8 @@ public final class MickEngine {
         /// (§6.4 "briefly"). The menu closes when you pick an item, so it has to outlast
         /// that to be seen on the next open.
         public var announcementDuration: TimeInterval = 60
+        /// How long a burst of changes to `config.json` settles before it's reread.
+        public var configDebounce: TimeInterval = 0.15
         public init() {}
     }
 
@@ -76,6 +78,18 @@ public final class MickEngine {
     /// `reminders.jsonl`.
     @ObservationIgnored public let reminderLog: ReminderLog
 
+    /// Called on the main actor when a panel appears and the bell is on (§6.5). The
+    /// app plays the sound here.
+    @ObservationIgnored public var onBell: (() -> Void)?
+    /// How many times the bell rang this launch (tests and the smoke check).
+    public private(set) var bellCount = 0
+    /// True once `uninstall()` has deleted Mick's home: nothing is saved after that.
+    public private(set) var isUninstalled = false
+
+    @ObservationIgnored private var configWatcher: ConfigWatcher?
+    /// The bytes of `config.json` as last read or written, so the watcher can tell a
+    /// hand edit from Mick's own save or an unrelated change in the directory.
+    @ObservationIgnored private var lastConfigData: Data?
     @ObservationIgnored private var tailer: EventTailer?
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var pollTimer: Timer?
@@ -129,10 +143,8 @@ public final class MickEngine {
             }
         }
 
-        let (loadedConfig, cOutcome) = JSONFileStore.load(MickConfig.self, from: home.config, defaults: .defaults, now: now, log: log)
-        let (validConfig, problems) = loadedConfig.validated()
-        problems.forEach { log.log("config.json: \($0)") }
-        config = validConfig
+        let (loadedConfig, cOutcome) = readConfig(now: now, atLaunch: true) ?? (.defaults, .missing)
+        config = loadedConfig
         configOutcome = cOutcome
         if cOutcome != .loaded { saveConfig() }
 
@@ -167,6 +179,14 @@ public final class MickEngine {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
 
+        let watcher = ConfigWatcher(file: home.config, debounce: tunables.configDebounce) { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.reloadConfigIfChanged() }
+            }
+        }
+        configWatcher = watcher
+        watcher.start()
+
         isRunning = true
         updatePollRate()
         updateActivity()
@@ -194,6 +214,8 @@ public final class MickEngine {
     }
 
     public func stop() {
+        configWatcher?.stop()
+        configWatcher = nil
         timer?.invalidate()
         timer = nil
         pollTimer?.invalidate()
@@ -216,6 +238,8 @@ public final class MickEngine {
         if changed { saveState() }
         refreshHooks(now: now)
         tailer?.poke()
+        // A safety net next to the config watcher.
+        reloadConfigIfChanged()
         updateActivity()
     }
 
@@ -574,6 +598,12 @@ public final class MickEngine {
         updatePollRate()
         updateActivity()
         if !effects.isEmpty { onReminder?(effects) }
+        // The bell rings as a panel appears, only if it's turned on (§6.5).
+        if config.sound, effects.contains(where: { if case .show = $0 { true } else { false } }) {
+            bellCount += 1
+            log.log("bell")
+            onBell?()
+        }
         settlements.forEach { onSettled?($0) }
     }
 
@@ -646,13 +676,148 @@ public final class MickEngine {
         }
     }
 
+    // MARK: - Settings (§6.5, §11)
+
+    /// A change from the Settings window: validated (out-of-range values take their
+    /// defaults, logged), applied, and written to `config.json`. A scheduled check keeps
+    /// the show delay it was scheduled with; the new values apply from the next one.
+    public func updateConfig(_ new: MickConfig) {
+        guard !isUninstalled else { return }
+        let (valid, problems) = new.validated()
+        problems.forEach { log.log("settings: \($0)") }
+        // SwiftUI fields write back unchanged values (on focus loss, on close).
+        guard valid != config || lastConfigData == nil else { return }
+        log.log("settings changed: \(Self.describe(valid))")
+        config = valid
+        saveConfig()
+        updateActivity()
+    }
+
+    /// Rereads `config.json` if its contents changed since Mick last read or wrote it
+    /// (a hand edit). Values with the wrong type or out of range take their defaults
+    /// and are logged; a file that isn't JSON at all keeps the current settings until
+    /// it's fixed (and is never moved aside while Mick runs); a deleted file means
+    /// defaults. The watcher calls this; so does the periodic tick, as a safety net.
+    public func reloadConfigIfChanged() {
+        guard isRunning, !isUninstalled else { return }
+        let data = try? Data(contentsOf: home.config)
+        guard data != lastConfigData else { return }
+        guard let (loaded, _) = readConfig(now: clock(), atLaunch: false) else { return }
+        guard loaded != config else { return }
+        log.log("config.json changed by hand; now \(Self.describe(loaded))")
+        config = loaded
+        updateActivity()
+    }
+
+    /// Reads `config.json`. Returns nil (keep the current config) only for a live
+    /// reload of a file that can't be parsed. At launch such a file is corrupt: moved
+    /// aside and replaced with defaults (§12.2).
+    private func readConfig(now: Date, atLaunch: Bool) -> (MickConfig, LoadOutcome)? {
+        let url = home.config
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            log.log("config.json missing; using defaults")
+            lastConfigData = nil
+            return (.defaults, .missing)
+        } catch {
+            lastConfigData = nil
+            guard atLaunch else {
+                log.log("config.json unreadable (\(error.localizedDescription)); keeping the current settings")
+                return nil
+            }
+            log.log("config.json unreadable (\(error.localizedDescription)); using defaults")
+            return (.defaults, .corrupt(movedTo: JSONFileStore.moveAside(url, now: now, log: log)))
+        }
+        lastConfigData = data
+        switch ConfigFile.parse(data) {
+        case .config(let config, let problems):
+            problems.forEach { log.log("config.json: \($0)") }
+            return (config, .loaded)
+        case .unreadable(let why):
+            guard atLaunch else {
+                log.log("config.json is \(why); keeping the current settings until it's fixed")
+                return nil
+            }
+            let moved = JSONFileStore.moveAside(url, now: now, log: log)
+            log.log("config.json corrupted (\(why)); moved to \(moved?.lastPathComponent ?? "nowhere") and replaced with defaults")
+            return (.defaults, .corrupt(movedTo: moved))
+        }
+    }
+
+    private static func describe(_ c: MickConfig) -> String {
+        let quiet = c.quietHours.map { "\($0.start)-\($0.end)" } ?? "off"
+        return "threshold \(c.sitThresholdMinutes)m, show delay \(c.showDelaySeconds)s, break reset \(c.breakResetMinutes)m, quiet hours \(quiet), bell \(c.sound ? "on" : "off")"
+    }
+
+    // MARK: - Uninstall (§13)
+
+    public struct UninstallResult: Equatable, Sendable {
+        /// Mick's home directory is gone.
+        public var removedHome: Bool
+        /// Anything that went wrong, in plain words.
+        public var problems: [String]
+    }
+
+    /// Settings → Uninstall…: stops everything, unregisters the login item, deletes
+    /// Mick's home directory, and saves nothing afterwards. With the directory gone, a
+    /// still-installed plugin's hooks write nothing (§6.1). The app quits after showing
+    /// the plugin uninstall command.
+    @discardableResult
+    public func uninstall(loginItem: LoginItemController?) -> UninstallResult {
+        var problems: [String] = []
+        log.log("uninstalling: removing \(home.url.path)")
+        stop()
+        if let loginItem {
+            loginItem.refresh()
+            if loginItem.status != .notRegistered {
+                loginItem.setEnabled(false)
+                if let message = loginItem.errorMessage { problems.append(message) }
+            }
+        }
+        isUninstalled = true
+
+        let path = home.url.path
+        let fm = FileManager.default
+        if !Self.isSafeToDelete(home.url, userHome: fm.homeDirectoryForCurrentUser) {
+            problems.append("Refused to delete \(path): that isn't Mick's own folder.")
+        } else if fm.fileExists(atPath: path) {
+            do {
+                try fm.removeItem(at: home.url)
+            } catch {
+                problems.append("Couldn't delete \(path): \(error.localizedDescription)")
+            }
+        }
+        let removed = !fm.fileExists(atPath: path)
+        FileHandle.standardError.write(Data("Mick: uninstalled; \(path) \(removed ? "deleted" : "NOT deleted")\n".utf8))
+        return UninstallResult(removedHome: removed, problems: problems)
+    }
+
+    /// A last guard before deleting Mick's home: never `/`, the user's home or any
+    /// folder above it (a mistyped `MICK_HOME`).
+    public static func isSafeToDelete(_ url: URL, userHome: URL) -> Bool {
+        func parts(_ u: URL) -> [String] { u.standardizedFileURL.resolvingSymlinksInPath().pathComponents.filter { $0 != "/" } }
+        let target = parts(url), home = parts(userHome)
+        guard !target.isEmpty else { return false }
+        // Refuse the home folder itself and anything that contains it.
+        return !(target.count <= home.count && Array(home.prefix(target.count)) == target)
+    }
+
     // MARK: - Saving
 
     private func saveState() {
+        guard !isUninstalled else { return }
         do { try JSONFileStore.save(state, to: home.state) } catch { log.log("couldn't save state.json: \(error.localizedDescription)") }
     }
 
     private func saveConfig() {
-        do { try JSONFileStore.save(config, to: home.config) } catch { log.log("couldn't save config.json: \(error.localizedDescription)") }
+        guard !isUninstalled else { return }
+        do {
+            try JSONFileStore.save(config, to: home.config)
+            lastConfigData = try? Data(contentsOf: home.config)
+        } catch {
+            log.log("couldn't save config.json: \(error.localizedDescription)")
+        }
     }
 }

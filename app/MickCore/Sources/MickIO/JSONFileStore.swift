@@ -59,7 +59,8 @@ public enum JSONFileStore {
         return candidate
     }
 
-    private static func moveAside(_ url: URL, now: Date, log: any MickLogger) -> URL? {
+    /// Moves a corrupted file to `corruptURL(for:now:)` (deleting it if that fails).
+    public static func moveAside(_ url: URL, now: Date, log: any MickLogger) -> URL? {
         let target = corruptURL(for: url, now: now)
         do {
             try FileManager.default.moveItem(at: url, to: target)

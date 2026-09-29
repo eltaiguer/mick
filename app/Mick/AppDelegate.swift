@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #if DEBUG
     private(set) var simulation: SimulationController?
 #endif
+    private(set) var settings: SettingsWindowController!
+    private(set) var loginItem: LoginItemController!
+    private(set) var bell: BellPlayer!
+    private(set) var uninstalled: UninstalledWindowController?
 
     init(options: LaunchOptions) {
         self.options = options
@@ -63,11 +67,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Open at login (§6.5). Only a real launch on the default home (~/.mick) touches
+        // the system login item: with any other home (MICK_HOME for tests, simulation,
+        // the smoke check) a login item would start Mick without it (§12), so those use
+        // an in-memory stand-in.
+        let usesSystemLoginItem = !options.smoke && home == MickHome.resolve(environment: [:])
+        let loginService: any LoginItemService = usesSystemLoginItem ? SystemLoginItem() : RecordingLoginItem()
+        if !usesSystemLoginItem { log.log("not the default home (or a smoke check): open at login is simulated, never registered with the system") }
+        let loginItem = LoginItemController(service: loginService, log: log)
+        self.loginItem = loginItem
+        loginItem.applyDefault(firstLaunch: engine.createdHome)
+
+        // The bell (§6.5): muted in the unattended smoke check.
+        let bell = BellPlayer(muted: options.smoke)
+        self.bell = bell
+        engine.onBell = { [weak bell] in bell?.play() }
+
         workspaceSignals = WorkspaceSignals(engine: engine)
-        onboarding = OnboardingWindowController(engine: engine)
-        statusItem = StatusItemController(engine: engine) { [weak self] in
+        onboarding = OnboardingWindowController(engine: engine, loginItem: loginItem)
+        settings = SettingsWindowController(
+            engine: engine, loginItem: loginItem,
+            onPlayBell: { [weak bell] in bell?.play() },
+            onUninstall: { [weak self] in self?.confirmUninstall() }
+        )
+        statusItem = StatusItemController(engine: engine, onSetUp: { [weak self] in
             self?.onboarding.show(activate: true)
-        }
+        }, onSettings: { [weak self] in
+            self?.settings.show(activate: !(self?.options.smoke ?? true))
+        })
         reminderPanel = ReminderPanelController(engine: engine) { [weak self] in self?.statusItem.item.button }
 
         // First launch, or the hooks were never seen: explain how to set up. An
@@ -111,6 +138,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let smoke = SmokeCheck(delegate: self)
             Task { await smoke.run() }
         }
+    }
+
+    // MARK: - Uninstall (§13)
+
+    /// Settings → Uninstall…: asks first, then uninstalls.
+    func confirmUninstall() {
+        UninstallConfirmation.ask(home: engine.home, attachedTo: settings.window) { [weak self] in
+            self?.uninstall(activate: true)
+        }
+    }
+
+    /// Deletes Mick's home, unregisters the login item, takes Mick out of the menu bar
+    /// and shows the plugin uninstall command; quitting follows from that window.
+    func uninstall(activate: Bool) {
+        guard uninstalled == nil else { return }
+        let result = engine.uninstall(loginItem: loginItem)
+        reminderPanel.hide()
+        settings.close()
+        onboarding.close()
+        workspaceSignals.stop()
+        statusItem.remove()
+        let window = UninstalledWindowController(result: result, home: engine.home) {
+            NSApp.terminate(nil)
+        }
+        uninstalled = window
+        window.show(activate: activate)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

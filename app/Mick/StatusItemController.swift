@@ -11,6 +11,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     let item: NSStatusItem
     private let engine: MickEngine
     private let onSetUp: () -> Void
+    private let onSettings: () -> Void
     private let menu = NSMenu()
     private(set) var icon: MenuBarIcon?
     /// Items added above Quit each time the menu is rebuilt (the debug Simulate menu).
@@ -18,9 +19,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         didSet { populate(menu) }
     }
 
-    init(engine: MickEngine, onSetUp: @escaping () -> Void) {
+    init(engine: MickEngine, onSetUp: @escaping () -> Void, onSettings: @escaping () -> Void) {
         self.engine = engine
         self.onSetUp = onSetUp
+        self.onSettings = onSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
         menu.autoenablesItems = false
@@ -113,10 +115,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             extra.forEach(menu.addItem)
             menu.addItem(.separator())
         }
+        let settings = NSMenuItem(title: Self.settingsTitle, action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         let quit = NSMenuItem(title: "Quit Mick", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
+
+    /// Takes the item out of the menu bar (after Uninstall…).
+    func remove() {
+        guard isInMenuBar else { return }
+        NSStatusBar.system.removeStatusItem(item)
+        isInMenuBar = false
+    }
+    private(set) var isInMenuBar = true
 
     /// The first menu item's title (the smoke check reads it).
     var topLine: String? { item.menu?.items.first?.title }
@@ -128,6 +141,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     static let pauseTitle = "Pause"
     static let resumeTitle = "Resume"
     static let cancelSnoozeTitle = "Cancel snooze"
+    static let settingsTitle = "Settings…"
 
     /// The top-level item with this title, from a fresh rebuild (the smoke check drives
     /// the menu through it).
@@ -154,5 +168,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func pause() { engine.pause() }
     @objc private func resume() { engine.resume() }
     @objc private func setUp() { onSetUp() }
+    @objc private func openSettings() { onSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
