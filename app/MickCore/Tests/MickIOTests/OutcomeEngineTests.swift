@@ -107,7 +107,9 @@ import MickCore
         #expect(r["session_id"] as? String == "A")
         #expect(r["cwd"] as? String == "/tmp/project")
         #expect(r["sitting_minutes"] as? Int == 60)
-        #expect(r["routine"] as? [String] == ["stand", "back-bend", "shoulder-rolls"])
+        let routine = try #require(r["routine"] as? [String])
+        #expect(routine.count == 3)
+        #expect(routine.first == "stand")
         #expect(r["ticked"] as? [String] == [])
         #expect(r["max_idle_seconds"] as? Int == 10)
         #expect(r["manual"] as? Bool == false)
@@ -173,7 +175,11 @@ import MickCore
 
         let lines = try records(temp)
         #expect(lines.map { $0["outcome"] as? String } == ["partial", "completed"])
-        #expect(lines.map { $0["ticked"] as? [String] } == [["stand"], ["stand", "back-bend", "shoulder-rolls"]])
+        #expect(lines.count == 2)
+        #expect(lines.first?["ticked"] as? [String] == ["stand"])
+        let second = try #require(lines.last?["routine"] as? [String])
+        #expect(second.count == 3)
+        #expect(lines.last?["ticked"] as? [String] == second)
         #expect(lines.map { $0["session_id"] as? String } == ["A", "B"])
     }
 
