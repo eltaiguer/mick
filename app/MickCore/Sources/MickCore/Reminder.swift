@@ -107,7 +107,7 @@ public struct Reminder: Equatable, Sendable {
 
     /// The visible panel.
     public struct Panel: Equatable, Sendable {
-        /// The session it was shown for; nil for Stretch now (#10).
+        /// The session it was shown for; nil for Stretch now.
         public var sessionID: String?
         public var cwd: String?
         public var content: ReminderContent
@@ -132,7 +132,7 @@ public struct Reminder: Equatable, Sendable {
             self.sittingMinutes = sittingMinutes
         }
 
-        /// Shown from the menu (Stretch now, #10) rather than for an agent run.
+        /// Shown from the menu (Stretch now) rather than for an agent run.
         public var isManual: Bool { sessionID == nil }
 
         public var isDone: Bool { allTickedAt != nil }
@@ -396,6 +396,24 @@ public struct Reminder: Equatable, Sendable {
             return [.settled(s)]
         }
     }
+
+    /// Stretch now (§8): shows the panel at once with no session attached, so agent
+    /// stops never close it. Its lifetime is the usual one without the agent rule:
+    /// closes when all items are ticked (after the done line), when you close it,
+    /// 2 minutes after the last tick, or 3 minutes after appearing if untouched (and the
+    /// 10-minute cap). It then settles like any reminder; `Outcome.apply` makes an
+    /// Ignored manual reminder a no-op. Returns `[]` (and does nothing) while a
+    /// reminder is scheduled, visible or settling. Snooze, pause and quiet hours don't
+    /// block it: it's voluntary.
+    public mutating func stretchNow(content: ReminderContent, sittingMinutes: Int, now: Date) -> [Effect] {
+        guard phase == .idle else { return [] }
+        let panel = Panel(sessionID: nil, cwd: nil, content: content, shownAt: now, sittingMinutes: sittingMinutes)
+        phase = .visible(panel)
+        return [.show(panel)]
+    }
+
+    /// Stretch now is available: nothing is scheduled, visible or settling (§6.4).
+    public var canStretchNow: Bool { !isBusy }
 
     /// Ticks or unticks an item on the visible panel. Ignored once the done line shows.
     public mutating func setTicked(_ index: Int, _ isOn: Bool, now: Date) -> [Effect] {

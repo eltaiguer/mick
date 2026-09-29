@@ -64,13 +64,21 @@ final class ReminderPanelModel {
     var controlFrames: [String: CGRect] = [:]
     var onToggle: (Int, Bool) -> Void = { _, _ in }
     var onNotNow: () -> Void = {}
+    /// The content's height changed (the snooze row opened or closed).
+    var onLayoutChange: () -> Void = {}
+    /// "Snooze ▾" reveals the three durations inline. Inline buttons, not a pop-up
+    /// menu, so choosing one is a plain click on the non-activating panel.
+    var snoozeOpen = false
+    var onSnooze: (SnoozeOption) -> Void = { _ in }
 
     static func toggleID(_ index: Int) -> String { "toggle.\(index)" }
     static let notNowID = "button.notNow"
+    static let snoozeID = "button.snooze"
+    static func snoozeOptionID(_ option: SnoozeOption) -> String { "button.snooze.\(option.rawValue)" }
 }
 
 /// The reminder panel (SPEC §5, §9.1): the opener, the checklist, "Not now" and
-/// "Snooze ▾". Snooze is shown but disabled until #10.
+/// "Snooze ▾" (30 min / 1 hour / 2 hours).
 struct ReminderPanelView: View {
     @Bindable var model: ReminderPanelModel
 
@@ -110,13 +118,29 @@ struct ReminderPanelView: View {
                     .foregroundStyle(.secondary)
                     .reportFrame(ReminderPanelModel.notNowID, into: model)
                 Spacer()
-                Button("Snooze ▾") {}
+                Button(model.snoozeOpen ? "Snooze ▴" : "Snooze ▾") {
+                    model.snoozeOpen.toggle()
+                    model.onLayoutChange()
+                }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .disabled(true)
-                    .help("Snooze arrives in a later version.")
+                    .foregroundStyle(.secondary)
+                    .disabled(model.done)
+                    .reportFrame(ReminderPanelModel.snoozeID, into: model)
             }
             .padding(.top, 2)
+
+            if model.snoozeOpen && !model.done {
+                HStack(spacing: 14) {
+                    Spacer()
+                    ForEach(SnoozeOption.panelOptions, id: \.self) { option in
+                        Button(option.shortLabel) { model.onSnooze(option) }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                            .reportFrame(ReminderPanelModel.snoozeOptionID(option), into: model)
+                    }
+                }
+                .font(.callout)
+            }
         }
         .padding(16)
         .frame(width: 340, alignment: .leading)
@@ -151,7 +175,21 @@ final class ReminderPanelController {
         panel.contentView = hostingView
         model.onToggle = { [weak engine] index, on in engine?.setReminderItem(index, ticked: on) }
         model.onNotNow = { [weak engine] in engine?.dismissReminder() }
+        model.onSnooze = { [weak engine] option in engine?.snooze(option) }
+        model.onLayoutChange = { [weak self] in
+            // After SwiftUI has laid out the new row.
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.fitKeepingTop() } }
+        }
         engine.onReminder = { [weak self] effects in self?.apply(effects) }
+    }
+
+    /// Resizes to the content, keeping the top edge where it is (under the menu bar).
+    private func fitKeepingTop() {
+        guard panel.isVisible else { return }
+        hostingView.layoutSubtreeIfNeeded()
+        let size = hostingView.fittingSize
+        let old = panel.frame
+        panel.setFrame(CGRect(x: old.minX, y: old.maxY - size.height, width: size.width, height: size.height), display: true)
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -160,6 +198,7 @@ final class ReminderPanelController {
         for effect in effects {
             switch effect {
             case .show(let p):
+                model.snoozeOpen = false
                 sync(p)
                 show()
             case .updated(let p), .allTicked(let p):

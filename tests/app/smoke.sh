@@ -165,6 +165,41 @@ run_smoke "$H" "$WORK/long-sit-2.out" --smoke-hook "$HOOK" --smoke-reminder show
 /usr/bin/jq -e --argjson first "$FIRST" '(.rotation.used_move_ids | length) == 3 and .rotation.used_move_ids[0:2] == $first' "$H/state.json" >/dev/null \
   && ok "rotation kept across relaunch" || fail "rotation after relaunch" "before $FIRST, after $(/usr/bin/jq -c .rotation "$H/state.json")"
 
+# --- 5c. Snooze, pause, Stretch now (#10) -----------------------------------
+echo "== snooze, pause, stretch now"
+for scenario in panel-snooze stretch-now menu-controls; do
+  H="$WORK/controls-$scenario"; sit_state "$H" -60M -1M
+  printf '{"sit_threshold_minutes":50,"show_delay_seconds":2}\n' >"$H/config.json"
+  SITTING_BEFORE=$(sitting_since_of "$H")
+  run_smoke "$H" "$WORK/controls-$scenario.out" --smoke-hook "$HOOK" --smoke-reminder "$scenario" --smoke-idle 10
+  status=$?
+  sed 's/^/     | /' "$WORK/controls-$scenario.out"
+  [ $status -eq 0 ] && grep -q '^SMOKE OK' "$WORK/controls-$scenario.out" && ok "scenario $scenario passed" \
+    || fail "scenario $scenario (exit $status)" "$(tail -5 "$WORK/controls-$scenario.out.stderr")"
+  # The saved sitting_since keeps its instant (only the fraction digits may differ).
+  /usr/bin/jq -e --arg b "$SITTING_BEFORE" '(.sitting_since | sub("\\.[0-9]+Z$"; "Z")) == ($b | sub("\\.[0-9]+Z$"; "Z"))' "$H/state.json" >/dev/null \
+    && ok "$scenario: sitting_since unchanged in state.json" || fail "$scenario: sitting_since changed" "$SITTING_BEFORE -> $(sitting_since_of "$H")"
+done
+/usr/bin/jq -e '.snoozed_until != null' "$WORK/controls-panel-snooze/state.json" >/dev/null \
+  && ok "panel snooze saved snoozed_until" || fail "snoozed_until not saved"
+grep -q '"outcome":"snoozed"' "$WORK/controls-panel-snooze/reminders.jsonl" 2>/dev/null \
+  && ok "reminders.jsonl records the panel snooze" || fail "panel snooze not logged"
+grep -q 'routine (stretch now): stand, ' "$WORK/controls-stretch-now/log.txt" && grep -q 'stretch now shown' "$WORK/controls-stretch-now/log.txt" \
+  && ok "log.txt records Stretch now" || fail "Stretch now not logged"
+H="$WORK/controls-menu-controls"
+/usr/bin/jq -e '.paused == true' "$H/state.json" >/dev/null && ok "pause saved to state.json" || fail "pause not saved"
+run_smoke "$H" "$WORK/controls-relaunch.out" --smoke-idle 0
+[ $? -eq 0 ] && grep -q 'icon=paused ' "$WORK/controls-relaunch.out" && ok "pause persists across relaunch (paused icon)" \
+  || fail "pause after relaunch" "$(grep -E 'INFO icon|FAIL' "$WORK/controls-relaunch.out")"
+
+# Quiet hours covering the whole day except one minute (so crossing midnight): the paused icon.
+H="$WORK/controls-quiet"; sit_state "$H" -60M -1M
+NEXT=$(date -v+2M +%H:%M); START=$(date -v+1M +%H:%M)
+printf '{"quiet_hours":{"start":"%s","end":"%s"}}\n' "$NEXT" "$START" >"$H/config.json"
+run_smoke "$H" "$WORK/controls-quiet.out" --smoke-idle 0
+[ $? -eq 0 ] && grep -q 'icon=paused ' "$WORK/controls-quiet.out" && ok "inside quiet hours (across midnight): paused icon" \
+  || fail "quiet hours icon" "$(grep -E 'INFO icon|FAIL' "$WORK/controls-quiet.out")"
+
 # --- 6. Refuses to run --smoke without MICK_HOME ----------------------------
 echo "== guard"
 env -u MICK_HOME HOME="$WORK/fakehome" "$BIN" --smoke >/dev/null 2>&1

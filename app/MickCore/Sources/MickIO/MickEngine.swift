@@ -54,6 +54,9 @@ public final class MickEngine {
     @ObservationIgnored public var onReminder: (([Reminder.Effect]) -> Void)?
     /// Called on the main actor after a reminder settles and its outcome is applied.
     @ObservationIgnored public var onSettled: ((Settlement) -> Void)?
+    /// A Mick line shown briefly in the dropdown's status line after snooze, pause or
+    /// resume (§6.4). In memory only.
+    public private(set) var notice: StatusNotice?
     /// The most recent settlement this launch (diagnostics and the smoke check).
     public private(set) var lastSettlement: Settlement?
     /// `reminders.jsonl`.
@@ -212,6 +215,7 @@ public final class MickEngine {
         }
         // The follow-up window's "did you get up" watch (§8).
         reminder.observeIdle(idle, now: now)
+        if Controls.clearExpiredSnooze(&state, now: now) { log.log("snooze over") }
         rollOver(now: now)
         if save { saveState() }
     }
@@ -349,12 +353,94 @@ public final class MickEngine {
     }
 
     /// Snooze from the panel: snoozes until `until` and settles the reminder at once as
-    /// the Snoozed outcome, with no penalty (§8). The panel's Snooze menu arrives in #10.
+    /// the Snoozed outcome, with no penalty (§8).
     public func snoozeReminder(until: Date) {
         guard reminder.panel != nil else { return }
-        state.snoozedUntil = until
+        Controls.snooze(&state, until: until)
         deliver(reminder.snooze(now: clock()))
         saveState()
+    }
+
+    // MARK: - Snooze, pause, Stretch now (§6.4, §8)
+
+    /// Snooze from the menu or the panel. A visible panel settles at once as the
+    /// Snoozed outcome (no penalty, §8); a scheduled check is dropped at show time.
+    /// Never touches the sitting timer.
+    public func snooze(_ option: SnoozeOption) {
+        let now = clock()
+        let until = option.until(from: now)
+        log.log("snoozed until \(MickDate.string(from: until)) (\(option.rawValue))")
+        if reminder.panel != nil {
+            snoozeReminder(until: until)
+        } else {
+            Controls.snooze(&state, until: until)
+            saveState()
+        }
+        show(notice: .snooze(option), now: now)
+    }
+
+    /// Pause until resumed; persists across relaunch. Never touches the sitting timer.
+    public func pause() {
+        let now = clock()
+        guard !state.paused else { return }
+        Controls.pause(&state)
+        saveState()
+        log.log("paused")
+        show(notice: .pause, now: now)
+    }
+
+    /// Ends a pause and any snooze. Never touches the sitting timer.
+    public func resume() {
+        let now = clock()
+        guard state.paused || Controls.isSnoozed(state, now: now) else { return }
+        Controls.resume(&state)
+        saveState()
+        log.log("resumed")
+        show(notice: .resume, now: now)
+    }
+
+    public var isPaused: Bool { state.paused }
+    public var isSnoozed: Bool { Controls.isSnoozed(state, now: clock()) }
+
+    /// The Mick line for the dropdown's status line while a notice is showing, else nil.
+    public var noticeLine: String? {
+        guard let notice, notice.isShowing(at: clock()) else { return nil }
+        return notice.text
+    }
+
+    private func show(notice action: StatusNotice.Action, now: Date) {
+        notice = StatusNotice(text: StatusNotice.line(for: action), now: now)
+    }
+
+    /// "Stretch now" is enabled only while no reminder is scheduled, visible or
+    /// settling (§6.4).
+    public var canStretchNow: Bool { reminder.canStretchNow }
+
+    /// Stretch now (§8): a normal routine in a panel with no session attached. Returns
+    /// false (and does nothing) while a reminder is scheduled, visible or settling.
+    @discardableResult
+    public func stretchNow() -> Bool {
+        let now = clock()
+        guard reminder.canStretchNow else { return false }
+        var content = reminderContent
+        var composition: Routine.Composition?
+        if let moves {
+            // Always a normal routine, even after a long sit (§10.1).
+            let c = Routine.compose(.normal, catalog: moves, rotation: state.rotation, using: &rng)
+            composition = c
+            content = .routine(c)
+        }
+        let sitting = Int(SittingTimer.sittingSeconds(state, now: now) / 60)
+        let effects = reminder.stretchNow(content: content, sittingMinutes: sitting, now: now)
+        guard !effects.isEmpty else { return false }
+        if let composition {
+            state.rotation.usedMoveIDs = composition.rotation.usedMoveIDs
+            state.rotation.lastAreas = composition.rotation.lastAreas
+            log.log("routine (stretch now): \(composition.items.map(\.id).joined(separator: ", "))")
+        }
+        saveState()
+        deliver(effects)
+        return true
     }
 
     /// True while the App Nap activity is held (§6.3).
@@ -422,7 +508,7 @@ public final class MickEngine {
         case .notScheduled(let s, let b): log.log("prompt on session \(s) didn't schedule a reminder (\(b))")
         case .waitingForGap(let s): log.log("reminder for session \(s) waiting for a 3 s input gap")
         case .dropped(let s, let why): log.log("reminder check for session \(s) dropped (\(why))")
-        case .show(let p): log.log("reminder shown for session \(p.sessionID ?? "none")")
+        case .show(let p): log.log(p.isManual ? "stretch now shown" : "reminder shown for session \(p.sessionID ?? "none")")
         case .updated: break
         case .allTicked: log.log("reminder: all items ticked")
         case .closed(_, let why): log.log("reminder closed (\(why.rawValue))")

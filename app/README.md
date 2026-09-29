@@ -13,7 +13,9 @@
     Stand up + 2 moves, or Stand up + Walk + 1 move for a long sit, with the rotation
     and area rules of §10.1), reminder outcomes and Mick's memory (`Outcome`,
     `MickMemory`, `ReminderRecord`: the §8 table, `nag_after`, `ignored_today` and its
-    midnight rollover, the reminder log line), panel placement (`PanelPlacement`), and
+    midnight rollover, the reminder log line), snooze, pause and quiet hours
+    (`SnoozeOption`, `Controls`, `StatusNotice`; Stretch now is `Reminder.stretchNow`),
+    panel placement (`PanelPlacement`), and
     the `state.json` and `config.json` models.
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
@@ -60,6 +62,11 @@ shows its check mark within 2 s. It refuses to run without `MICK_HOME`.
 scenario with real hook events against an armed state that `smoke.sh` prepares: the panel
 appears after the show delay without taking focus, closes within 2 s of a stop, never
 appears for a short run, and stays after a stop once something is ticked.
+`panel-snooze|stretch-now|menu-controls` cover snooze, pause and Stretch now: Snooze ▾ →
+1 hour on the panel settles it as Snoozed; Stretch now from the menu shows a panel that
+agent stops don't close; Pause, Resume and Snooze from the menu show Mick's line in the
+status line and never move `sitting_since` (the scenario ends paused so `smoke.sh` can
+check the pause survives a relaunch).
 Set `MICK_SMOKE_SNAPSHOT=/path/panel.png` to save a picture of the panel.
 `--smoke-idle SECONDS` (smoke only) replaces the real idle reading with a fixed one, so
 the sitting-timer scenarios in `smoke.sh` don't depend on whether someone is at the Mac.
