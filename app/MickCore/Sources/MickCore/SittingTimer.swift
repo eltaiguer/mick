@@ -8,6 +8,8 @@ import Foundation
 public enum SittingTimer {
     /// How often the app polls system idle time (decision 16).
     public static let pollInterval: TimeInterval = 30
+    /// How often during a reminder's follow-up window (§6.3, §8, decision 16).
+    public static let followUpPollInterval: TimeInterval = 5
 
     /// Something the sitting timer reacts to.
     public enum Input: Equatable, Sendable {
@@ -43,6 +45,7 @@ public enum SittingTimer {
             // The last time you actually touched the Mac (decision 31), for the relaunch rule.
             state.lastActiveAt = now.addingTimeInterval(-idle)
             guard idle >= breakReset else { return nil }
+            endPenalty(&state)
             // On a break: keep sitting_since at now for as long as you're away, so
             // sitting time restarts from about the moment you come back.
             return moveSittingSince(&state, to: now) ? .idle(seconds: idle) : nil
@@ -50,6 +53,7 @@ public enum SittingTimer {
         case .launch:
             let away = now.timeIntervalSince(state.lastActiveAt)
             guard away >= breakReset else { return nil }
+            endPenalty(&state)
             return moveSittingSince(&state, to: now) ? .relaunch(awaySeconds: away) : nil
 
         case .wake(let sleptAt):
@@ -57,13 +61,21 @@ public enum SittingTimer {
             // while the Mac sleeps, so it's no later than the moment it went to sleep.
             let slept = now.timeIntervalSince(sleptAt ?? state.lastActiveAt)
             guard slept >= breakReset else { return nil }
+            endPenalty(&state)
             return moveSittingSince(&state, to: now) ? .sleep(seconds: slept) : nil
 
         case .sessionBecameActive(let resignedAt):
             let away = now.timeIntervalSince(resignedAt ?? state.lastActiveAt)
             guard away >= breakReset else { return nil }
+            endPenalty(&state)
             return moveSittingSince(&state, to: now) ? .userSwitch(seconds: away) : nil
         }
+    }
+
+    /// A real break clears the ignore penalty (§8): sitting time has to reach the full
+    /// threshold again anyway.
+    static func endPenalty(_ state: inout MickState) {
+        state.nagAfter = nil
     }
 
     /// Moves `sitting_since` to `date` only if that's later. Returns true if it moved.

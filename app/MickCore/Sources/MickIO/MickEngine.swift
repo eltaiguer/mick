@@ -15,6 +15,9 @@ public final class MickEngine {
         public var tickInterval: TimeInterval = 60
         /// Poll system idle time this often (§6.3).
         public var pollInterval: TimeInterval = SittingTimer.pollInterval
+        /// Poll this often instead while a reminder is visible or waiting to settle, to
+        /// catch the "did you get up" idle stretch (§6.3, §8).
+        public var followUpPollInterval: TimeInterval = SittingTimer.followUpPollInterval
         /// The reminder's lifetime timings (§7, §9.2). Only simulation mode shortens them.
         public var reminderTimings: Reminder.Timings = .standard
         public init() {}
@@ -49,6 +52,12 @@ public final class MickEngine {
     /// Called on the main actor with every batch of reminder effects (show, tick
     /// updates, done line, close). The app's panel renders from these.
     @ObservationIgnored public var onReminder: (([Reminder.Effect]) -> Void)?
+    /// Called on the main actor after a reminder settles and its outcome is applied.
+    @ObservationIgnored public var onSettled: ((Settlement) -> Void)?
+    /// The most recent settlement this launch (diagnostics and the smoke check).
+    public private(set) var lastSettlement: Settlement?
+    /// `reminders.jsonl`.
+    @ObservationIgnored public let reminderLog: ReminderLog
 
     @ObservationIgnored private var tailer: EventTailer?
     @ObservationIgnored private var timer: Timer?
@@ -73,6 +82,7 @@ public final class MickEngine {
         self.moves = moves
         self.activity = activity
         self.reminder = Reminder(timings: tunables.reminderTimings)
+        self.reminderLog = ReminderLog(url: home.reminders)
         self.log = log
         self.tunables = tunables
         self.clock = clock
@@ -108,6 +118,7 @@ public final class MickEngine {
         // Quitting for the break-reset time counts as a break (decision 17). Only the
         // loaded file's last_active_at counts; defaults use now, so they never reset.
         if let reset = SittingTimer.apply(.launch, config: config, now: now, to: &state) { logReset(reset) }
+        rollOver(now: now)
         pollIdle(now: now, save: false)
         let pruned = SessionBook.prune(&state, now: now)
         if !pruned.isEmpty { log.log("pruned \(pruned.count) session(s) with no event for 2 hours") }
@@ -132,15 +143,30 @@ public final class MickEngine {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
 
+        isRunning = true
+        updatePollRate()
+        updateActivity()
+    }
+
+    /// The idle poll interval right now: 5 s during a reminder's follow-up window,
+    /// 30 s otherwise (§6.3).
+    public var currentPollInterval: TimeInterval {
+        reminder.isInFollowUp ? tunables.followUpPollInterval : tunables.pollInterval
+    }
+
+    /// (Re)creates the repeating idle poll when its interval should change.
+    private func updatePollRate() {
+        guard isRunning else { return }
+        let interval = currentPollInterval
+        if let pollTimer, pollTimer.isValid, pollTimer.timeInterval == interval { return }
+        pollTimer?.invalidate()
         // A repeating Timer, not asyncAfter, which runs late by ~5 % (signals spike).
-        let pollTimer = Timer(timeInterval: tunables.pollInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
-        pollTimer.tolerance = min(3, tunables.pollInterval / 10)
-        RunLoop.main.add(pollTimer, forMode: .common)
-        self.pollTimer = pollTimer
-        isRunning = true
-        updateActivity()
+        timer.tolerance = min(3, interval / 10)
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 
     public func stop() {
@@ -161,7 +187,9 @@ public final class MickEngine {
     /// and re-check the events file in case a file event was missed.
     public func tick() {
         let now = clock()
-        if !SessionBook.prune(&state, now: now).isEmpty { saveState() }
+        var changed = !SessionBook.prune(&state, now: now).isEmpty
+        changed = rollOver(now: now) || changed
+        if changed { saveState() }
         refreshHooks(now: now)
         tailer?.poke()
         updateActivity()
@@ -176,12 +204,24 @@ public final class MickEngine {
     }
 
     private func pollIdle(now: Date, save: Bool) {
-        if let reset = SittingTimer.apply(.poll(idleSeconds: idleSeconds()), config: config, now: now, to: &state) {
+        let idle = idleSeconds()
+        if let reset = SittingTimer.apply(.poll(idleSeconds: idle), config: config, now: now, to: &state) {
             logReset(reset)
         } else {
             lastReset = nil
         }
+        // The follow-up window's "did you get up" watch (§8).
+        reminder.observeIdle(idle, now: now)
+        rollOver(now: now)
         if save { saveState() }
+    }
+
+    /// Local midnight wipes Mick's memory of today (§8).
+    @discardableResult
+    private func rollOver(now: Date) -> Bool {
+        guard MickMemory.rollOver(&state, now: now) else { return false }
+        log.log("new day \(state.today.date): Mick's memory of today reset")
+        return true
     }
 
     /// `NSWorkspace.willSleep`.
@@ -308,14 +348,47 @@ public final class MickEngine {
         deliver(reminder.dismiss(now: clock()))
     }
 
+    /// Snooze from the panel: snoozes until `until` and settles the reminder at once as
+    /// the Snoozed outcome, with no penalty (§8). The panel's Snooze menu arrives in #10.
+    public func snoozeReminder(until: Date) {
+        guard reminder.panel != nil else { return }
+        state.snoozedUntil = until
+        deliver(reminder.snooze(now: clock()))
+        saveState()
+    }
+
     /// True while the App Nap activity is held (§6.3).
     public var isHoldingActivity: Bool { activity.isHeld }
 
     private func deliver(_ effects: [Reminder.Effect]) {
         effects.forEach(logEffect)
+        let settlements = effects.compactMap { if case .settled(let s) = $0 { Settlement(s) } else { nil } }
+        settlements.forEach(settle)
         scheduleReminderTimer()
+        updatePollRate()
         updateActivity()
         if !effects.isEmpty { onReminder?(effects) }
+        settlements.forEach { onSettled?($0) }
+    }
+
+    /// Applies a settled reminder's outcome to Mick's memory, saves it, and appends the
+    /// reminder log line (§8, §12.3).
+    private func settle(_ settlement: Settlement) {
+        let now = clock()
+        let before = state.sittingSince
+        settlement.apply(config: config, now: now, to: &state)
+        lastSettlement = settlement
+        saveState()
+        let s = settlement.settling
+        var detail = "\(settlement.outcome.rawValue); closed \(s.reason.rawValue), ticked \(s.panel.ticked.count)/\(s.panel.content.items.count), max idle \(Int(s.panel.maxIdleSeconds))s"
+        if s.panel.isManual { detail += ", manual" }
+        if state.sittingSince != before { detail += "; sitting timer reset" }
+        log.log("reminder settled (\(detail))")
+        do {
+            try reminderLog.append(settlement.record)
+        } catch {
+            log.log("couldn't append to reminders.jsonl: \(error.localizedDescription)")
+        }
     }
 
     /// One one-shot `Timer` for the next reminder deadline, with zero tolerance
@@ -353,7 +426,7 @@ public final class MickEngine {
         case .updated: break
         case .allTicked: log.log("reminder: all items ticked")
         case .closed(_, let why): log.log("reminder closed (\(why.rawValue))")
-        case .settled(let s): log.log("reminder settled (\(s.reason.rawValue), ticked \(s.panel.ticked.count)/\(s.panel.content.items.count))")
+        case .settled: break  // logged with its outcome by settle(_:)
         }
     }
 

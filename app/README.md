@@ -11,11 +11,14 @@
     decisions, check hand-off, show-time input-gap wait, panel lifetime and the settle
     window, as a pure value with explicit deadlines), routine composition (`Routine`:
     Stand up + 2 moves, or Stand up + Walk + 1 move for a long sit, with the rotation
-    and area rules of §10.1), panel placement (`PanelPlacement`), and the `state.json`
-    and `config.json` models.
+    and area rules of §10.1), reminder outcomes and Mick's memory (`Outcome`,
+    `MickMemory`, `ReminderRecord`: the §8 table, `nag_after`, `ignored_today` and its
+    midnight rollover, the reminder log line), panel placement (`PanelPlacement`), and
+    the `state.json` and `config.json` models.
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
-    tailer, the App Nap activity (`ActivityAssertion`), the bundled move catalogue
+    tailer, the App Nap activity (`ActivityAssertion`), `reminders.jsonl`
+    (`ReminderLog`), the bundled move catalogue
     (`Sources/MickIO/Resources/moves.json`, a package resource so the app and
     `swift test` read the same file), and `MickEngine`, the one
     object that owns state, feeds live events to the reminder, runs its one-shot timer

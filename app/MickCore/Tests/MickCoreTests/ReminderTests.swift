@@ -281,8 +281,8 @@ import MickCore
         var w = world()
         w.event(.prompt, "A")
         w.run(for: 30)
-        let panel = w.reminder.panel
         w.run(for: 10)
+        let panel = w.reminder.panel  // after the runs: the idle watch updates it
         w.event(.prompt, "A")
         #expect(w.reminder.panel == panel)
     }
