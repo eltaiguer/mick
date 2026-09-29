@@ -1,0 +1,10 @@
+{
+  "name": "mick",
+  "version": "0.1.0",
+  "description": "Records Claude Code agent events (start, stop, wait, end) for the Mick menu bar app. Writes only the event name, a timestamp, the session id, the working directory and the notification type.",
+  "author": {
+    "name": "Jose Gazzano"
+  },
+  "homepage": "https://github.com/eltaiguer/mick",
+  "repository": "https://github.com/eltaiguer/mick"
+}
