@@ -53,8 +53,12 @@ xcodebuild -project app/Mick.xcodeproj -scheme Mick -configuration Release \
 ```
 
 The project signs ad hoc by default (with the hardened runtime in Release), so it builds
-on any machine with no team set. To sign with your Apple Development certificate, pick
-your team in Xcode or pass `CODE_SIGN_IDENTITY="<SHA-1 from security find-identity -p codesigning>"`.
+on any machine with no team set. To sign with your Apple Development certificate and
+install into `/Applications`, use `scripts/install.sh` (see the root README). Passing
+`CODE_SIGN_IDENTITY` alone isn't enough: the MickCore resource bundle then needs a team
+too, so the script also passes `DEVELOPMENT_TEAM` (read from the certificate) and
+`CODE_SIGN_STYLE=Manual`. Release builds leave out `get-task-allow`
+(`CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO`).
 
 Mick uses `~/.mick` unless `MICK_HOME` is set. `MICK_HOME` is for tests and simulation
 only, and `open` doesn't pass it through, so run the binary directly to use one:
@@ -105,7 +109,13 @@ builds reject all of these.
 tests/app/smoke.sh                # builds the app and runs its --smoke self-check (needs a GUI session)
 tests/hooks/test-hooks.sh         # the plugin's hook script
 tests/app/simulate.sh             # Debug build: plays every simulation scenario in the real app (~4 min; MICK_SIM_SKIP_SLOW=1 skips the 3-minute one), checks Release has none
+tests/app/release-check.sh        # scripts/install.sh into a scratch folder: signature, hardened runtime, no sandbox, then smoke.sh on that build
+tests/acceptance/check-matrix.sh  # docs/acceptance.md lists every SPEC §15 criterion and only real tests
 ```
+
+`AcceptanceTests` (in `MickIOTests`) walks SPEC §15 criterion by criterion through the
+engine; `docs/acceptance.md` maps every criterion to its tests, scenarios or manual check.
+`tests/app/smoke.sh` takes `MICK_APP=/path/Mick.app` to check an existing build.
 
 `Mick --smoke [--smoke-hook plugin/hooks/mick-event.sh]` runs inside the real app: it
 checks the accessory policy, status item, menu, files and onboarding, then (with

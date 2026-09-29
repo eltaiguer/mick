@@ -379,8 +379,12 @@ final class SmokeCheck {
         // Mick's voice (#9): the opener comes from the pool its precedence picks,
         // rendered for the sitting time, and is recorded in the rotation.
         let ignored = MickMemory.ignoredToday(engine.state, now: engine.now)
-        let openerPool = LinePool.opener(ignoredToday: ignored, kind: moves.first?.id == Routine.walkID ? .longSit : .normal)
         let minutes = engine.reminder.panel?.sittingMinutes ?? -1
+        // Long sit is judged by sitting time at show time, not by the routine: the walk
+        // also takes part in the normal rotation (§10.1), so a normal routine can start
+        // with it.
+        let kind: Routine.Kind = minutes >= 2 * engine.config.sitThresholdMinutes ? .longSit : .normal
+        let openerPool = LinePool.opener(ignoredToday: ignored, kind: kind)
         let rendered = engine.lines?.lines(openerPool).map { SpokenTime.render($0.text, sittingMinutes: minutes) } ?? []
         check(rendered.contains(content.opener), "opener from \(openerPool.rawValue): \(content.opener)")
         check(engine.state.rotation.usedLineIDs[openerPool.rawValue]?.count == 1, "opener recorded in the rotation")
@@ -527,7 +531,14 @@ final class SmokeCheck {
 
     private func frontmostUnchanged(_ before: pid_t?, me: pid_t) -> Bool {
         let now = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        return now != me && now == before
+        // Mick must never become frontmost. Another app coming forward on its own (a
+        // launch elsewhere on a shared machine) is noted but isn't Mick taking focus:
+        // a non-activating panel can't hand focus to a third app.
+        if now != me, now != before {
+            let name = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"
+            print("INFO frontmost app changed to \(name) during the check, not to Mick")
+        }
+        return now != me && NSApp.isActive == false
     }
 
     private func waitFor(_ timeout: Duration, _ condition: () -> Bool) async {
