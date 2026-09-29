@@ -1,0 +1,16 @@
+{
+  "name": "mick",
+  "owner": {
+    "name": "Jose Gazzano"
+  },
+  "metadata": {
+    "description": "Mick, a menu bar corner man for the agent era."
+  },
+  "plugins": [
+    {
+      "name": "mick",
+      "source": "./plugin",
+      "description": "Records Claude Code agent events (start, stop, wait, end) for the Mick menu bar app."
+    }
+  ]
+}
