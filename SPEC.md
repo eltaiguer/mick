@@ -51,9 +51,9 @@ Mick is Mickey Goldmill's personality: a gravelly old trainer who's seen it all.
 
 Rules for every line Mick says:
 
-- **Original writing only.** Written in his style, never quoted from the films. No film stills, likeness, logos or artwork anywhere in the app or repo.
-- **He insults sitting and laziness, nothing else.** Never your body, appearance, weight, health, age, or identity. No slurs.
-- **Mild language only.** "Bum", "crap", "damn" are fine. Nothing stronger; this is a public repo.
+- **Mostly original, with a few real film lines.** Most lines are written in his style. A handful of short, genuine Mickey lines from the films are welcome, but only verbatim ones someone has checked, never invented "quotes". No film stills, likeness, logos or artwork anywhere in the app or repo.
+- **Full Mickey.** He talks to you the way he'd talk to his fighter: strong language ("damn", "hell", "ass", "shit", "son of a bitch", "fuck") and personal jabs at your laziness, softness, looks or age are all fair game.
+- **No slurs, and no insults about gender, sexuality, race, religion or disability.**
 - **He never says push through pain.** The move instructions stay plain and gentle, and the README keeps the line: these are general suggestions, not medical advice; skip anything that hurts.
 - **Plain voice for problems.** Errors, setup steps and permission problems are written plainly so they're clear. Mick can add a line after, but the instruction comes first.
 
@@ -433,10 +433,10 @@ Stored in `lines.json` as pools, each with enough lines that repeats stay rare (
 
 | Pool | Used when | Examples (original, style guide only) |
 |---|---|---|
-| `opener` | Normal reminder, nothing ignored today | "On your feet, ya bum. The robot's doin' your job, now you do mine." / "Up. Now. I ain't gonna say it twice." |
+| `opener` | Normal reminder, nothing ignored today | "On your feet, ya bum. The robot's doin' your job, now you do mine." / "Get your ass outta that chair. Now." / "You're gonna eat lightnin' and you're gonna crap thunder! Now stand up." |
 | `opener_ignored_1` | 1 ignored today | "You ignored me last time. I noticed. Get up." |
 | `opener_ignored_2` | 2 ignored today | "Twice today, kid. TWICE. You got glue on that chair?" |
-| `opener_ignored_3` | 3+ ignored today | "I've trained bums with more get-up than you. UP!" |
+| `opener_ignored_3` | 3+ ignored today | "Get up, you son of a bitch, 'cause Mickey loves you." / "What the fuck is wrong with you? UP!" |
 | `opener_long_sit` | Long-sit routine | "{minutes} minutes? You're growin' roots. Walk." |
 | `done_all` | Everything ticked | "That's it. Wasn't so hard, was it?" / "Now you look like a fighter. Sorta." |
 | `done_partial` | Closed with some ticked | "Half a job. I'll take it. This time." |
@@ -630,7 +630,7 @@ docs/acceptance.md                every §15 criterion and how it's verified, pl
 | 9 | "Not now" is allowed but counts; Snooze doesn't count | Skipping is always possible; Mick just notices. Snooze is the explicit "not now, later" |
 | 10 | Long sit (2×) = Stand up + Walk + 1 move | Replaces the old walk-only rule within the checklist format |
 | 11 | Instructions plain, personality in openers/reactions | Safety and clarity for the moves; variety where it's fun |
-| 12 | Insults target sitting only; mild language; never "push through pain" | A stretching app for a public repo |
+| 12 | ~~Insults target sitting only; mild language~~ (superseded by 57); never "push through pain" | The moves are for a sore back, not a title fight |
 | 13 | No portrait, original glove icon, original bell sound | Avoid film likeness and imagery |
 | 14 | Panel is the only surface in v1; notifications move to Later | One surface to get right; fullscreen is handled by the panel itself (to verify) |
 | 15 | No hold timers in v1 | Tick when done; timers are UI work that doesn't change behavior |
@@ -675,5 +675,6 @@ docs/acceptance.md                every §15 criterion and how it's verified, pl
 | 54 | Ad hoc signing by default; `scripts/install.sh` signs with Apple Development and drops `get-task-allow` | Two teams in the keychain break automatic signing; the debug entitlement would block notarization |
 | 55 | Panel snooze is a row of buttons, not a pop-up menu | A plain click on a non-activating panel is known not to take focus; a menu isn't verified |
 | 56 | A stop during the input-gap wait hands the check off | Consistent with decision 34 |
+| 57 | Full Mickey: strong language and personal jabs; a few verbatim film lines | Jose's call: "anything he might say to Rocky". Limits kept: no slurs or identity insults, never push through pain, only film quotes checked to be genuine |
 
 **Status:** v1 is built (issues #1–#13, PRs #14–#26), and decisions 46–56 come from building it. What's left is the manual checklist in `docs/acceptance.md`, then the two-week trial.

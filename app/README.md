@@ -150,6 +150,7 @@ the sitting-timer scenarios in `smoke.sh` don't depend on whether someone is at 
 reword a line in place and add new ones with new ids. Opener pools need at least 8
 lines and the others 5. Lines never hardcode a duration: write `{minutes} minutes` or
 `{hours}` (which includes its unit) and Mick spells it out. `swift test` checks every
-line against the voice rules (mild language, sitting-only insults, no pushing through
-pain, no film names or quotes, no numbers or time units), but a person still has to
-read new lines for originality and tone.
+line against the voice rules (no slurs or identity insults, no pushing through pain,
+no film character names other than Mick's own, no numbers or time units). Strong
+language is fine. A person still has to read new lines for tone, and check that any
+film quote is genuine and word for word.

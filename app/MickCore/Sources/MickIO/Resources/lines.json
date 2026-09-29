@@ -1,126 +1,137 @@
 {
   "opener": [
     { "id": "opener.01", "text": "On your feet, ya bum. The robot's doin' your job, now you do mine." },
-    { "id": "opener.02", "text": "Up. Now. I ain't gonna say it twice." },
-    { "id": "opener.03", "text": "The machine's workin'. Why ain't you?" },
-    { "id": "opener.04", "text": "Hey! That chair ain't gonna miss ya. Get up." },
-    { "id": "opener.05", "text": "You hired a robot to do the thinkin'. Least you can do is stand." },
-    { "id": "opener.06", "text": "Out of the chair, kid. Let's move." },
-    { "id": "opener.07", "text": "Chair time's over. On your feet." },
-    { "id": "opener.08", "text": "While that thing types, you stretch. That's the deal." },
-    { "id": "opener.09", "text": "Look at you, folded up like a lawn chair. Up!" },
-    { "id": "opener.10", "text": "Get up off that can, kid. We got work to do." }
+    { "id": "opener.02", "text": "Get your ass outta that chair. Now." },
+    { "id": "opener.03", "text": "The machine's workin'. Why the hell ain't you?" },
+    { "id": "opener.04", "text": "Up, ya lazy bum. That chair ain't gonna miss you." },
+    { "id": "opener.05", "text": "What are you, glued there? Stand up, for Christ's sake." },
+    { "id": "opener.06", "text": "You been sittin' there like a sack of wet laundry. Up!" },
+    { "id": "opener.07", "text": "The computer's doin' the heavy liftin'. You do the standin'. Move!" },
+    { "id": "opener.08", "text": "Up. Now. I ain't gonna say it twice, ya bum." },
+    { "id": "opener.09", "text": "Quit starin' at the damn screen and get on your feet." },
+    { "id": "opener.10", "text": "You're gonna eat lightnin' and you're gonna crap thunder! Now stand up." },
+    { "id": "opener.11", "text": "Get up, ya bum. I yell 'cause I care. Now MOVE." }
   ],
   "opener_ignored_1": [
-    { "id": "ignored1.01", "text": "You ignored me last time. I noticed. Get up." },
-    { "id": "ignored1.02", "text": "Last time you blew me off. Not this time, kid." },
-    { "id": "ignored1.03", "text": "I asked nice before. I'm done askin' nice. Up." },
-    { "id": "ignored1.04", "text": "Remember me? The guy you ignored? On your feet." },
-    { "id": "ignored1.05", "text": "You skipped out on me once. Don't make it a habit." },
-    { "id": "ignored1.06", "text": "Fool me once, kid. Up you go." },
-    { "id": "ignored1.07", "text": "I let the last one slide. This one I ain't lettin' slide." },
-    { "id": "ignored1.08", "text": "You think I forgot? I don't forget. Stand up." }
+    { "id": "opener_ignored_1.01", "text": "You ignored me last time. I noticed, ya son of a bitch. Get up." },
+    { "id": "opener_ignored_1.02", "text": "Last time you blew me off. Not this time, kid. UP." },
+    { "id": "opener_ignored_1.03", "text": "I asked nice before. I'm done askin' nice. Get your ass up." },
+    { "id": "opener_ignored_1.04", "text": "You think I forgot? I don't forget nothin'. On your feet." },
+    { "id": "opener_ignored_1.05", "text": "Blew me off, huh? Real cute. Now get up." },
+    { "id": "opener_ignored_1.06", "text": "You ignored me once. Once. Don't make it a habit, ya bum." },
+    { "id": "opener_ignored_1.07", "text": "You stiffed me last round. I want my stretch. Move it." },
+    { "id": "opener_ignored_1.08", "text": "I let it slide last time. I ain't lettin' it slide again. Up!" },
+    { "id": "opener_ignored_1.09", "text": "I'm ridin' you 'cause I believe in you, ya son of a bitch. Get up." }
   ],
   "opener_ignored_2": [
-    { "id": "ignored2.01", "text": "Twice today, kid. TWICE. You got glue on that chair?" },
-    { "id": "ignored2.02", "text": "Two times you ignored me. I'm startin' to take it personal." },
-    { "id": "ignored2.03", "text": "Again with the ignorin'? Get outta that chair." },
-    { "id": "ignored2.04", "text": "Twice now. You tryin' to become part of the furniture?" },
-    { "id": "ignored2.05", "text": "I'm gettin' real tired of talkin' to the back of your head. UP." },
-    { "id": "ignored2.06", "text": "Me again, and you're still sittin'. That chair payin' you rent or somethin'?" },
-    { "id": "ignored2.07", "text": "You keep sittin', I keep comin' back. Guess who wins." },
-    { "id": "ignored2.08", "text": "Twice, kid. Once more and I'm gonna get loud." }
+    { "id": "opener_ignored_2.01", "text": "Twice today, kid. TWICE. You got glue on your ass?" },
+    { "id": "opener_ignored_2.02", "text": "Two times you ignored me. Now I'm pissed. Get up." },
+    { "id": "opener_ignored_2.03", "text": "Again with this shit? Get outta that goddamn chair." },
+    { "id": "opener_ignored_2.04", "text": "Twice! You deaf or just lazy? Stand up!" },
+    { "id": "opener_ignored_2.05", "text": "Round two, and you're losin' it sittin' on your ass. Get up." },
+    { "id": "opener_ignored_2.06", "text": "I've seen corpses with more hustle. That's twice now. MOVE." },
+    { "id": "opener_ignored_2.07", "text": "Twice you tuned me out. You wanna go again? Don't. Up." },
+    { "id": "opener_ignored_2.08", "text": "What the hell's wrong with you? Two strikes. Stand up." },
+    { "id": "opener_ignored_2.09", "text": "I'm on your ass 'cause nobody else will be. GET UP." }
   ],
   "opener_ignored_3": [
-    { "id": "ignored3.01", "text": "I've trained bums with more get-up than you. UP!" },
-    { "id": "ignored3.02", "text": "That's it. I'm yellin' now. OUT OF THE CHAIR!" },
-    { "id": "ignored3.03", "text": "You ignored me all day. Enough. ON YOUR FEET!" },
-    { "id": "ignored3.04", "text": "I lost count of how many times you blew me off. Get UP." },
-    { "id": "ignored3.05", "text": "You're sittin' like it's your job. It ain't. MOVE!" },
-    { "id": "ignored3.06", "text": "No more Mister Nice Trainer. UP, ya bum!" },
-    { "id": "ignored3.07", "text": "I seen statues move more than you today. GET UP!" },
-    { "id": "ignored3.08", "text": "Every time I come back you're still in that chair. Not this time. UP!" },
-    { "id": "ignored3.09", "text": "I'm hoarse from yellin' at you. Stand. UP!" }
+    { "id": "opener_ignored_3.01", "text": "Get up, you son of a bitch, 'cause Mickey loves you." },
+    { "id": "opener_ignored_3.02", "text": "I've trained bums with more get-up than you. UP, GODDAMN IT!" },
+    { "id": "opener_ignored_3.03", "text": "That's it. I'm yellin' now. GET YOUR ASS OUT OF THE CHAIR!" },
+    { "id": "opener_ignored_3.04", "text": "You ignored me all damn day. Enough. ON YOUR FEET!" },
+    { "id": "opener_ignored_3.05", "text": "I've had it with you, ya lazy son of a bitch. STAND UP!" },
+    { "id": "opener_ignored_3.06", "text": "Again? AGAIN? What the fuck is wrong with you? UP!" },
+    { "id": "opener_ignored_3.07", "text": "You're a disgrace, you know that? A goddamn disgrace. GET UP!" },
+    { "id": "opener_ignored_3.08", "text": "I'm too old for this shit, and you're too young to sit like that. UP!" },
+    { "id": "opener_ignored_3.09", "text": "Keep ignorin' me and I'll drag you outta that chair myself. MOVE!" },
+    { "id": "opener_ignored_3.10", "text": "You're breakin' my heart, ya stubborn bastard. I'm in your corner. GET UP!" }
   ],
   "opener_long_sit": [
-    { "id": "longsit.01", "text": "{minutes} minutes? You're growin' roots. Walk." },
-    { "id": "longsit.02", "text": "{hours} in that chair. Take a walk before you fuse to it." },
-    { "id": "longsit.03", "text": "{minutes} minutes without movin'. Go take a lap, kid." },
-    { "id": "longsit.04", "text": "{hours}! Furniture's got more get-up than you. Go for a walk." },
-    { "id": "longsit.05", "text": "You been sittin' {hours}. Your legs forgot what they're for. Walk." },
-    { "id": "longsit.06", "text": "{minutes} minutes on that can. Up, and take a walk." },
-    { "id": "longsit.07", "text": "{hours} straight. That's a long time to be a cushion. Walk." },
-    { "id": "longsit.08", "text": "Kid, it's been {hours}. Get up and walk around." }
+    { "id": "opener_long_sit.01", "text": "{minutes} minutes? You're growin' roots, ya bum. Walk." },
+    { "id": "opener_long_sit.02", "text": "{hours} in that chair. Walk before you fuse to the damn thing." },
+    { "id": "opener_long_sit.03", "text": "{minutes} minutes without movin'. Go take a lap, kid." },
+    { "id": "opener_long_sit.04", "text": "{hours} on your ass. Get up and walk, for Christ's sake." },
+    { "id": "opener_long_sit.05", "text": "{minutes} minutes. Even a statue gets pigeons. Walk!" },
+    { "id": "opener_long_sit.06", "text": "{hours}? Jesus. Walk to the kitchen and back before I lose it." },
+    { "id": "opener_long_sit.07", "text": "{minutes} minutes sittin'. Your legs forgot what they're for. Walk." },
+    { "id": "opener_long_sit.08", "text": "{hours} in the chair, kid. That ain't workin', that's hibernatin'. Walk." },
+    { "id": "opener_long_sit.09", "text": "{hours} in that chair. Get up, you stubborn son of a bitch. I'm in your corner. Walk." }
   ],
   "done_all": [
-    { "id": "doneall.01", "text": "That's it. Wasn't so hard, was it?" },
-    { "id": "doneall.02", "text": "Now you look like a fighter. Sorta." },
-    { "id": "doneall.03", "text": "Good. See? Still alive." },
-    { "id": "doneall.04", "text": "Not bad, kid. Not bad at all." },
-    { "id": "doneall.05", "text": "That's what I like to see. Back to work." },
-    { "id": "doneall.06", "text": "Attaboy. Now go see what the robot broke." },
-    { "id": "doneall.07", "text": "All done. I might even be proud. Don't tell nobody." }
+    { "id": "done_all.01", "text": "That's it. Wasn't so hard, was it?" },
+    { "id": "done_all.02", "text": "Now you look like a fighter. Sorta." },
+    { "id": "done_all.03", "text": "Good. See? Didn't kill ya." },
+    { "id": "done_all.04", "text": "Hell yeah. That's what I'm talkin' about." },
+    { "id": "done_all.05", "text": "Not bad, ya bum. Not bad at all." },
+    { "id": "done_all.06", "text": "Look at that. There's a pulse in there after all." },
+    { "id": "done_all.07", "text": "Damn right. Now get back to work." },
+    { "id": "done_all.08", "text": "That's my fighter. I love ya, ya bum." },
+    { "id": "done_all.09", "text": "See? I knew you had it in ya, kid." }
   ],
   "done_partial": [
-    { "id": "donepartial.01", "text": "Half a job. I'll take it. This time." },
-    { "id": "donepartial.02", "text": "Some's better than none. Barely." },
-    { "id": "donepartial.03", "text": "You quit early. I noticed. Still counts, I guess." },
-    { "id": "donepartial.04", "text": "Partway there. We'll finish it next round." },
-    { "id": "donepartial.05", "text": "Not all of it, but you moved. That's somethin'." }
+    { "id": "done_partial.01", "text": "Half a job. I'll take it. This time." },
+    { "id": "done_partial.02", "text": "Some's better than none. Barely." },
+    { "id": "done_partial.03", "text": "You quit early. I noticed. Still counts, I guess." },
+    { "id": "done_partial.04", "text": "That's it? Half-assed, but it's somethin'." },
+    { "id": "done_partial.05", "text": "You did a little. Next time do the whole damn thing." },
+    { "id": "done_partial.06", "text": "Cheap. But I'll take cheap over nothin'." },
+    { "id": "done_partial.07", "text": "You're a stubborn son of a bitch. Good. Now finish it next time." }
   ],
   "snooze": [
     { "id": "snooze.01", "text": "Fine. I'll be here." },
     { "id": "snooze.02", "text": "Go on then. I ain't goin' nowhere." },
-    { "id": "snooze.03", "text": "Later, huh? I'll hold you to that." },
-    { "id": "snooze.04", "text": "You got a reprieve. Don't waste it." },
-    { "id": "snooze.05", "text": "I'll wait. I'm good at waitin'." },
-    { "id": "snooze.06", "text": "Snooze all you want. I'll be back." }
+    { "id": "snooze.03", "text": "Later, huh? I'll hold you to that, ya bum." },
+    { "id": "snooze.04", "text": "Snooze. Sure. Run from me. You'll be back." },
+    { "id": "snooze.05", "text": "Hidin' from me? That's cute. I'll find ya." },
+    { "id": "snooze.06", "text": "Fine. But I'm keepin' score." }
   ],
   "pause": [
     { "id": "pause.01", "text": "Fine. Go soft." },
     { "id": "pause.02", "text": "Takin' a break from me? Some nerve." },
-    { "id": "pause.03", "text": "Paused. Don't get comfortable." },
-    { "id": "pause.04", "text": "I'll be in the corner. Holler when you're ready." },
-    { "id": "pause.05", "text": "You want quiet? You got it. For now." },
-    { "id": "pause.06", "text": "Alright, I'll sit this one out. Somebody's gotta show you how." }
+    { "id": "pause.03", "text": "Paused. Don't get comfortable, ya bum." },
+    { "id": "pause.04", "text": "You want quiet? You got it. For now." },
+    { "id": "pause.05", "text": "Shuttin' me up, huh? Real brave." },
+    { "id": "pause.06", "text": "Go ahead. Sit there and rot." }
   ],
   "resume": [
-    { "id": "resume.01", "text": "About time." },
+    { "id": "resume.01", "text": "About damn time." },
     { "id": "resume.02", "text": "Back in the ring. Good." },
     { "id": "resume.03", "text": "Missed me? Course you did." },
-    { "id": "resume.04", "text": "Alright, kid. Let's go to work." },
-    { "id": "resume.05", "text": "There you are. Let's get movin'." },
-    { "id": "resume.06", "text": "I'm back. Don't make me regret it." }
+    { "id": "resume.04", "text": "I'm back. Don't make me regret it." },
+    { "id": "resume.05", "text": "There you are. Let's go to work." },
+    { "id": "resume.06", "text": "Look who crawled back. Good. Now listen." },
+    { "id": "resume.07", "text": "Knew you'd come back. I'm still in your corner, kid." }
   ],
   "status_calm": [
-    { "id": "calm.01", "text": "You're fine. For now." },
-    { "id": "calm.02", "text": "{minutes} minutes on your can, kid." },
-    { "id": "calm.03", "text": "I'm watchin'. Keep workin'." },
-    { "id": "calm.04", "text": "All quiet in the corner." },
-    { "id": "calm.05", "text": "Sit while you can. I'll let you know." },
-    { "id": "calm.06", "text": "{minutes} minutes in. I got my eye on you." }
+    { "id": "status_calm.01", "text": "You're fine. For now." },
+    { "id": "status_calm.02", "text": "{minutes} minutes on your ass, kid." },
+    { "id": "status_calm.03", "text": "I'm watchin'. Keep workin'." },
+    { "id": "status_calm.04", "text": "Enjoy it while it lasts, ya bum." },
+    { "id": "status_calm.05", "text": "Quiet round. Don't get cocky." },
+    { "id": "status_calm.06", "text": "Sit pretty. I got my eye on you." }
   ],
   "status_armed": [
-    { "id": "armed.01", "text": "{minutes} minutes on your can. Next robot run, you're up." },
-    { "id": "armed.02", "text": "{minutes} minutes and countin'. Send a prompt and you're mine." },
-    { "id": "armed.03", "text": "That's {minutes} minutes in the chair. Next run, you stand." },
-    { "id": "armed.04", "text": "{minutes} minutes. I'm warmin' up my yellin' voice." },
-    { "id": "armed.05", "text": "You're up next, kid. {minutes} minutes is plenty." },
-    { "id": "armed.06", "text": "{minutes} minutes sittin'. Next time the robot works, so do you." }
+    { "id": "status_armed.01", "text": "{minutes} minutes on your ass. Next robot run, you're up." },
+    { "id": "status_armed.02", "text": "{minutes} minutes and countin'. Send a prompt and you're mine." },
+    { "id": "status_armed.03", "text": "That's {minutes} minutes in the chair. Next run, you stand." },
+    { "id": "status_armed.04", "text": "{minutes} minutes, ya bum. Hit enter and I'm comin' for you." },
+    { "id": "status_armed.05", "text": "{minutes} minutes of sittin'. I'm warmin' up." },
+    { "id": "status_armed.06", "text": "{minutes} minutes. Go ahead, prompt the damn thing. I dare ya." }
   ],
   "status_glaring": [
-    { "id": "glaring.01", "text": "{hours} in that chair. You're a disgrace to the chair." },
-    { "id": "glaring.02", "text": "{hours}. You're turnin' into upholstery." },
-    { "id": "glaring.03", "text": "{hours} without movin'. I'm this close to losin' it." },
-    { "id": "glaring.04", "text": "It's been {hours}, kid. You're walkin' next round." },
-    { "id": "glaring.05", "text": "{hours}! The chair's filin' a complaint." },
-    { "id": "glaring.06", "text": "{hours} on your can. Next run, you walk." }
+    { "id": "status_glaring.01", "text": "{hours} in that chair. You're a disgrace to the chair." },
+    { "id": "status_glaring.02", "text": "{hours}. You're turnin' into upholstery." },
+    { "id": "status_glaring.03", "text": "{hours} without movin'. I'm this close to losin' my shit." },
+    { "id": "status_glaring.04", "text": "{hours}? What the fuck, kid." },
+    { "id": "status_glaring.05", "text": "{hours} on your ass. Your spine's filin' a complaint." },
+    { "id": "status_glaring.06", "text": "{hours}. Even your chair wants a break from you." },
+    { "id": "status_glaring.07", "text": "{hours}. I love ya, kid, but get off your ass." }
   ],
   "onboarding": [
-    { "id": "onboarding.01", "text": "So you wanna be a contender. Install the thing." },
+    { "id": "onboarding.01", "text": "So you wanna be a contender. Install the damn thing." },
     { "id": "onboarding.02", "text": "I'm your new corner man. First, the plugin." },
-    { "id": "onboarding.03", "text": "Let's get you sittin' less. Start with the plugin." },
-    { "id": "onboarding.04", "text": "You and me, kid. Install the plugin and we'll get started." },
-    { "id": "onboarding.05", "text": "Every fighter needs a corner. Plug me in." }
+    { "id": "onboarding.03", "text": "Let's get you off your ass. Start with the plugin." },
+    { "id": "onboarding.04", "text": "You found me. Good. Now do what I say and install the plugin." },
+    { "id": "onboarding.05", "text": "Listen up, ya bum. Plugin first, then we work." }
   ]
 }

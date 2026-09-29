@@ -44,7 +44,7 @@ struct OnboardingView: View {
     let engine: MickEngine
     let loginItem: LoginItemController
     /// Mick's line, from the `onboarding` pool (§10.2).
-    var line: String = "So you wanna be a contender. Install the thing."
+    var line: String = "So you wanna be a contender. Install the damn thing."
     var onDone: () -> Void = {}
 
     var body: some View {

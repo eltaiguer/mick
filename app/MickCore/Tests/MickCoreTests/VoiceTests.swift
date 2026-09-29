@@ -271,6 +271,14 @@ private func testCatalog(extra: [LinePool: [Line]] = [:]) throws -> LineCatalog 
             "Fine. Go soft.",
             "About time.",
             "What the crap? Damn.",
+            // Full Mickey (decision 57): swearing and personal jabs are fine.
+            "Get your ass outta that chair.",
+            "What the fuck is wrong with you? UP!",
+            "I'm too old for this shit, and you're too young to sit like that.",
+            "You look like hell, ya lazy son of a bitch.",
+            // Genuine film lines are allowed.
+            "You're gonna eat lightnin' and you're gonna crap thunder!",
+            "Get up, you son of a bitch, 'cause Mickey loves you.",
         ] {
             #expect(VoiceRules.problems(in: line) == [], "\(line)")
         }
@@ -288,15 +296,10 @@ private func testCatalog(extra: [LinePool: [Line]] = [:]) throws -> LineCatalog 
         "No pain no gain.",
         "Feel the burn!",
         "If it hurts, keep going.",
-        "Get off your ass.",
-        "What the hell.",
-        "Holy shit, get up.",
-        "Lose some weight, fatso. You're fat.",
-        "Up, old man.",
-        "You're stupid for sittin'.",
-        "You're gonna eat lightnin' and crap thunder.",
-        "Women weaken legs.",
+        "You sit like a little girl.",
+        "Quit bein' such a sissy.",
         "Up, Rocky.",
+        "Go find Adrian.",
         "It's been {days}.",
     ])
     func rulesCatchViolations(_ line: String) {
