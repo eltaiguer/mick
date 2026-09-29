@@ -8,7 +8,8 @@ old boxing trainer. He only shows up when an agent run has just started, never w
 you're typing, and the panel never takes keyboard focus. When the agent finishes and you
 haven't started, he gets out of the way.
 
-The moves are general suggestions, not medical advice; skip anything that hurts.
+Fair warning: Mick swears, insults you, and occasionally quotes the films. The moves are
+general suggestions, not medical advice; skip anything that hurts.
 
 Everything stays on your Mac: no accounts, no network, no telemetry. The Claude Code
 plugin records only an event name, a timestamp, the session id, the working directory and

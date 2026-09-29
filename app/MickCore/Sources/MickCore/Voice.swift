@@ -54,34 +54,26 @@ public enum Voice {
     }
 }
 
-/// The rules every line Mick says must follow (SPEC §1, Mick's voice; decisions 12 and
-/// 37), as checks a test runs over the whole of `lines.json`. They catch the mechanical
-/// part; originality and tone still need a human read.
+/// The rules every line Mick says must follow (SPEC §1, Mick's voice; decisions 12, 37
+/// and 57), as checks a test runs over the whole of `lines.json`. Strong language and
+/// personal jabs are fine: full Mickey. They catch the mechanical part; tone and whether
+/// a film quote is genuine still need a human read.
 public enum VoiceRules {
-    /// Stronger than "bum", "crap" and "damn" (mild language only).
-    static let strongLanguage = [
-        "shit", "fuck", "ass", "arse", "bitch", "bastard", "hell", "piss", "dick", "cock",
-        "goddamn", "goddam", "christ", "jesus", "screw you", "sucks", "wtf",
-    ]
-    /// Mick insults sitting and laziness only: never body, appearance, weight, health,
-    /// age, identity or smarts.
+    /// Never slurs, and never insults about gender, sexuality, race, religion or
+    /// disability.
     static let offLimits = [
-        "fat", "weight", "pounds", "belly", "gut", "flab", "chubby", "pudgy", "lard", "skinny",
-        "ugly", "bald", "wrinkl", "old man", "grandpa", "grandma", "geezer", "stupid", "idiot",
-        "dumb", "moron", "sick", "disease", "weakling", "girl", "sissy", "wimp", "freak", "loser",
+        "girl", "sissy", "pansy", "gay", "queer", "fag", "homo", "tranny", "retard", "cripple",
+        "spaz", "midget", "jew", "muslim", "christian", "religion", "race", "ethnic",
     ]
-    /// Never "push through pain": no pain, burn or toughing it out.
+    /// Never "push through pain": no pain, burn or toughing it out. The moves are for a
+    /// sore back, not a title fight.
     static let pushingThroughPain = [
         "pain", "hurt", "push through", "burn", "ache", "suffer", "tough it out", "walk it off",
         "no excuses", "bleed",
     ]
-    /// Well-known lines and names from the films. Original writing only.
-    static let filmQuotes = [
-        "rocky", "balboa", "adrian", "apollo", "creed", "mickey", "goldmill", "stallion",
-        "eye of the tiger", "gonna fly now", "eat lightning", "eat lightnin", "crap thunder",
-        "women weaken legs", "hear no bell", "heard no bell", "hear any bell", "cuz mickey loves you",
-        "'cause mickey loves you", "son of a", "tomato", "yo,", "absolutely", "how hard you can get hit",
-        "how hard you hit", "going the distance", "go the distance", "keep moving forward",
+    /// Film character names that aren't Mick himself. You're not them.
+    static let filmNames = [
+        "rocky", "balboa", "adrian", "apollo", "creed", "paulie", "clubber", "drago", "goldmill",
     ]
     /// Units that would be a hardcoded duration unless a placeholder supplies the number.
     static let timeUnits = ["second", "sec", "minute", "min", "hour", "hr", "half an", "an hour"]
@@ -94,10 +86,9 @@ public enum VoiceRules {
         func has(_ term: String) -> Bool {
             term.contains(where: { !$0.isLetter }) ? lower.contains(term) : words.contains { $0 == term || $0.hasPrefix(term) && term.count >= 4 }
         }
-        for term in strongLanguage where has(term) { found.append("strong language: \(term)") }
         for term in offLimits where has(term) { found.append("off-limits insult: \(term)") }
         for term in pushingThroughPain where has(term) { found.append("pushes through pain: \(term)") }
-        for term in filmQuotes where has(term) { found.append("film quote or name: \(term)") }
+        for term in filmNames where has(term) { found.append("film character name: \(term)") }
         if text.contains(where: \.isNumber) { found.append("hardcoded number") }
         // A time unit is fine only right after {minutes} ("{minutes} minutes").
         let withoutPlaceholderUnits = lower.replacingOccurrences(of: "{minutes} minutes", with: "{minutes}")
