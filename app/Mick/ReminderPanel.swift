@@ -58,7 +58,10 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
 final class ReminderPanelModel {
     var content: ReminderContent = .standard
     var ticked: Set<Int> = []
+    /// Showing a done line (all ticked, or closed with some ticked): no more ticking.
     var done = false
+    /// The opener, then the done line (`Reminder.Panel.headline`).
+    var headline = ReminderContent.standard.opener
     /// Frames of the interactive controls, in the hosting view's top-left-origin space
     /// (the smoke check clicks them).
     var controlFrames: [String: CGRect] = [:]
@@ -84,11 +87,19 @@ struct ReminderPanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(model.done ? model.content.doneLine : model.content.opener)
-                .font(.headline)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentTransition(.opacity)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.headline)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentTransition(.opacity)
+                // Plain, in digits (§10.2): only for a long sit with an ignored-tier opener.
+                if let detail = model.content.detail, !model.done {
+                    Text(detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(model.content.items.enumerated()), id: \.element.id) { index, item in
@@ -201,7 +212,7 @@ final class ReminderPanelController {
                 model.snoozeOpen = false
                 sync(p)
                 show()
-            case .updated(let p), .allTicked(let p):
+            case .updated(let p), .allTicked(let p), .closing(let p):
                 sync(p)
             case .closed:
                 panel.orderOut(nil)
@@ -214,7 +225,8 @@ final class ReminderPanelController {
     private func sync(_ p: Reminder.Panel) {
         model.content = p.content
         model.ticked = p.ticked
-        model.done = p.isDone
+        model.done = p.isClosing
+        model.headline = p.headline
     }
 
     /// Only `orderFrontRegardless()`: never `makeKeyAndOrderFront`, never `NSApp.activate`.

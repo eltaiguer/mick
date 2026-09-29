@@ -15,6 +15,8 @@ enum PluginCommands {
 /// The open-at-login toggle arrives with Settings (#11).
 struct OnboardingView: View {
     let engine: MickEngine
+    /// Mick's line, from the `onboarding` pool (§10.2).
+    var line: String = "So you wanna be a contender. Install the thing."
     var onDone: () -> Void = {}
     @State private var copied: String?
 
@@ -24,7 +26,7 @@ struct OnboardingView: View {
                 Text("Meet Mick").font(.title2.bold())
                 Text("Mick keeps track of how long you've been sitting. When it's been too long and you hand work to Claude Code, he drops down from the menu bar with a one-minute stretch routine, then gets out of the way.")
                     .fixedSize(horizontal: false, vertical: true)
-                Text("“So you wanna be a contender. Install the thing.”")
+                Text("“\(line)”")
                     .italic()
                     .foregroundStyle(.secondary)
             }
@@ -137,7 +139,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let view = OnboardingView(engine: engine) { [weak self] in self?.close() }
+        let view = OnboardingView(engine: engine, line: engine.onboardingLine()) { [weak self] in self?.close() }
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "Welcome to Mick"
         window.styleMask = [.titled, .closable]

@@ -159,8 +159,8 @@ public enum Routine {
 }
 
 extension ReminderContent {
-    /// The standard opener and done line with a composed routine (Mick's voice, #9,
-    /// replaces the lines).
+    /// The standard lines with a composed routine. The engine replaces the lines with
+    /// picks from Mick's pools (`Voice`, §10.2).
     public static func routine(_ composition: Routine.Composition) -> ReminderContent {
         var content = ReminderContent.standard
         content.items = composition.items

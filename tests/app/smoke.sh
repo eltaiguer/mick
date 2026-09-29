@@ -54,6 +54,9 @@ codesign -dv "$APP" 2>&1 | grep -q 'runtime' && ok "hardened runtime" || fail "h
 codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'app-sandbox' && fail "app is sandboxed" || ok "not sandboxed"
 MOVES=$(find "$APP/Contents/Resources" -name moves.json -path '*MickIO*' 2>/dev/null | head -1)
 [ -n "$MOVES" ] && [ "$(/usr/bin/jq length "$MOVES")" = 11 ] && ok "moves.json bundled with 11 moves" || fail "moves.json missing from the bundle"
+LINES=$(find "$APP/Contents/Resources" -name lines.json -path '*MickIO*' 2>/dev/null | head -1)
+[ -n "$LINES" ] && /usr/bin/jq -e 'length == 14 and ([.[] | length] | min) >= 5 and ([.opener, .opener_ignored_1, .opener_ignored_2, .opener_ignored_3, .opener_long_sit] | map(length) | min) >= 8' "$LINES" >/dev/null \
+  && ok "lines.json bundled with all 14 pools" || fail "lines.json missing from the bundle or short a pool"
 
 # --- 1. First launch, then a real hook event --------------------------------
 echo "== first launch"

@@ -15,17 +15,26 @@ public struct RoutineItem: Equatable, Sendable, Identifiable {
 }
 
 /// What the panel shows. The engine fills `items` with a composed routine
-/// (`Routine`, §10.1); `standard` is the fallback when no move catalogue loaded.
-/// Mick's full voice (#9) replaces the opener and done line.
+/// (`Routine`, §10.1) and the lines from Mick's pools (`Voice`, §10.2); `standard` is
+/// the fallback when no move catalogue or line pools loaded.
 public struct ReminderContent: Equatable, Sendable {
     public var opener: String
+    /// The plain line under the opener, or nil. Set only for a long sit with an
+    /// ignored-tier opener, to say how long you've been sitting (§10.2).
+    public var detail: String?
     public var items: [RoutineItem]
+    /// Shown when everything is ticked (`done_all`).
     public var doneLine: String
+    /// Shown when the panel is closed with some ticked (`done_partial`).
+    public var partialLine: String
 
-    public init(opener: String, items: [RoutineItem], doneLine: String) {
+    public init(opener: String, detail: String? = nil, items: [RoutineItem], doneLine: String,
+                partialLine: String = "Half a job. I'll take it. This time.") {
         self.opener = opener
+        self.detail = detail
         self.items = items
         self.doneLine = doneLine
+        self.partialLine = partialLine
     }
 
     /// Stand up + 2 moves (§5, decision 1).
@@ -69,7 +78,7 @@ public struct Reminder: Equatable, Sendable {
         public var untouchedClose: TimeInterval = 180
         /// Something ticked: close this long after the last tick.
         public var afterLastTick: TimeInterval = 120
-        /// All ticked: the done line shows this long.
+        /// All ticked, or closed with some ticked: the done line shows this long.
         public var doneLine: TimeInterval = 3
         /// Close this long after appearing, no matter what.
         public var hardCap: TimeInterval = 600
@@ -118,6 +127,9 @@ public struct Reminder: Equatable, Sendable {
         public var lastTickAt: Date?
         /// When the last item was ticked; the done line shows from here.
         public var allTickedAt: Date?
+        /// When "Not now" was chosen with some (not all) ticked; the partial done line
+        /// shows from here, then the panel closes (§10.2).
+        public var closingAt: Date?
         /// Whole minutes you'd been sitting when it appeared (for the reminder log).
         public var sittingMinutes: Int
         /// The longest continuous idle stretch seen since it appeared, from the idle
@@ -136,6 +148,14 @@ public struct Reminder: Equatable, Sendable {
         public var isManual: Bool { sessionID == nil }
 
         public var isDone: Bool { allTickedAt != nil }
+        /// Showing a done line (all ticked, or closed with some ticked) before closing.
+        public var isClosing: Bool { allTickedAt != nil || closingAt != nil }
+        /// The line at the top of the panel right now: the opener, then a done line.
+        public var headline: String {
+            if isDone { return content.doneLine }
+            if closingAt != nil { return content.partialLine }
+            return content.opener
+        }
         public var tickedItemIDs: [String] {
             content.items.indices.filter { ticked.contains($0) }.map { content.items[$0].id }
         }
@@ -213,6 +233,8 @@ public struct Reminder: Equatable, Sendable {
         case updated(Panel)
         /// Everything ticked: show the done line.
         case allTicked(Panel)
+        /// "Not now" with some ticked: show the partial done line, then close as `.notNow`.
+        case closing(Panel)
         case closed(Panel, CloseReason)
         /// The settle window ended. `Outcome.judge` decides how it went and
         /// `Outcome.apply` updates Mick's memory (§8).
@@ -415,9 +437,9 @@ public struct Reminder: Equatable, Sendable {
     /// Stretch now is available: nothing is scheduled, visible or settling (§6.4).
     public var canStretchNow: Bool { !isBusy }
 
-    /// Ticks or unticks an item on the visible panel. Ignored once the done line shows.
+    /// Ticks or unticks an item on the visible panel. Ignored once a done line shows.
     public mutating func setTicked(_ index: Int, _ isOn: Bool, now: Date) -> [Effect] {
-        guard case .visible(var p) = phase, !p.isDone, p.content.items.indices.contains(index) else { return [] }
+        guard case .visible(var p) = phase, !p.isClosing, p.content.items.indices.contains(index) else { return [] }
         guard p.ticked.contains(index) != isOn else { return [] }
         if isOn { p.ticked.insert(index) } else { p.ticked.remove(index) }
         p.lastTickAt = now
@@ -472,10 +494,16 @@ public struct Reminder: Equatable, Sendable {
         }
     }
 
-    /// "Not now", or closing the panel.
+    /// "Not now", or closing the panel. With some (not all) ticked, the partial done
+    /// line shows first and the panel closes after `timings.doneLine`; a second "Not
+    /// now" while it shows closes at once.
     public mutating func dismiss(now: Date) -> [Effect] {
-        guard case .visible(let p) = phase else { return [] }
-        return close(p, reason: p.isDone ? .done : .notNow, now: now)
+        guard case .visible(var p) = phase else { return [] }
+        if p.isDone { return close(p, reason: .done, now: now) }
+        if p.ticked.isEmpty || p.closingAt != nil { return close(p, reason: .notNow, now: now) }
+        p.closingAt = now
+        phase = .visible(p)
+        return [.closing(p)]
     }
 
     // MARK: - Panel lifetime (§9.2)
@@ -485,6 +513,8 @@ public struct Reminder: Equatable, Sendable {
         var candidates: [(Date, CloseReason)] = [(p.shownAt.addingTimeInterval(timings.hardCap), .hardCap)]
         if let done = p.allTickedAt {
             candidates.append((done.addingTimeInterval(timings.doneLine), .done))
+        } else if let closing = p.closingAt {
+            candidates.append((closing.addingTimeInterval(timings.doneLine), .notNow))
         } else if !p.ticked.isEmpty, let last = p.lastTickAt {
             candidates.append((last.addingTimeInterval(timings.afterLastTick), .afterLastTick))
         } else {
