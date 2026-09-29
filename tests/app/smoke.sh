@@ -4,7 +4,8 @@
 # wouldn't pass MICK_HOME through), and leaves no process behind.
 #
 # Usage: tests/app/smoke.sh            (exit 0 = all passed)
-#   SIGN_IDENTITY=<name or SHA-1>      sign with an Apple Development identity instead of ad hoc
+#   MICK_APP=/path/Mick.app            check this app instead of building one (tests/app/release-check.sh
+#                                      passes the Apple Development build from scripts/install.sh)
 #   MICK_SKIP_BUILD=1                  reuse the last build
 #
 # Needs a logged-in GUI session (the status item and onboarding window are real).
@@ -13,7 +14,7 @@ set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HOOK="$ROOT/plugin/hooks/mick-event.sh"
 DERIVED="$ROOT/app/build/DerivedData"
-APP="$DERIVED/Build/Products/Release/Mick.app"
+APP=${MICK_APP:-$DERIVED/Build/Products/Release/Mick.app}
 BIN="$APP/Contents/MacOS/Mick"
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/mick-app-smoke.XXXXXX")
@@ -25,11 +26,10 @@ FAIL=0
 ok()   { PASS=$((PASS + 1)); printf 'ok   %s\n' "$1"; }
 fail() { FAIL=$((FAIL + 1)); printf 'FAIL %s\n' "$1"; [ $# -gt 1 ] && printf '     %s\n' "$2"; }
 
-if [ "${MICK_SKIP_BUILD:-0}" != 1 ]; then
+if [ "${MICK_SKIP_BUILD:-0}" != 1 ] && [ -z "${MICK_APP:-}" ]; then
   echo "== building Mick.app (Release)"
-  set -- -project "$ROOT/app/Mick.xcodeproj" -scheme Mick -configuration Release -derivedDataPath "$DERIVED"
-  [ -n "${SIGN_IDENTITY:-}" ] && set -- "$@" CODE_SIGN_IDENTITY="$SIGN_IDENTITY"
-  if ! xcodebuild "$@" build >"$WORK/build.log" 2>&1; then
+  if ! xcodebuild -project "$ROOT/app/Mick.xcodeproj" -scheme Mick -configuration Release \
+       -derivedDataPath "$DERIVED" build >"$WORK/build.log" 2>&1; then
     tail -30 "$WORK/build.log"
     echo "BUILD FAILED"
     exit 1
