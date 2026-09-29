@@ -20,6 +20,10 @@ public final class MickEngine {
         public var followUpPollInterval: TimeInterval = SittingTimer.followUpPollInterval
         /// The reminder's lifetime timings (§7, §9.2). Only simulation mode shortens them.
         public var reminderTimings: Reminder.Timings = .standard
+        /// How long a snooze, pause or resume line stays in the dropdown's status line
+        /// (§6.4 "briefly"). The menu closes when you pick an item, so it has to outlast
+        /// that to be seen on the next open.
+        public var announcementDuration: TimeInterval = 60
         public init() {}
     }
 
@@ -45,6 +49,16 @@ public final class MickEngine {
     public var reminderContent: ReminderContent = .standard
     /// The move catalogue (`moves.json`, §10.1); nil if the bundled file was unusable.
     public private(set) var moves: MoveCatalog?
+    /// Mick's line pools (`lines.json`, §10.2); nil if the bundled file was unusable.
+    public private(set) var lines: LineCatalog?
+    /// A snooze, pause or resume line showing in the status line until `until`.
+    public private(set) var announcement: (text: String, until: Date)?
+    /// The lines picked for the visible reminder; each done line is committed to the
+    /// rotation only when it shows.
+    @ObservationIgnored private var reminderLines: Voice.ReminderLines?
+    /// The status line's current pick. A new one is picked when the menu opens or the
+    /// pool changes (calm, armed, glaring), not on every re-render.
+    @ObservationIgnored private var statusPick: (pool: LinePool, line: Line)?
 
     /// Called on the main actor after each batch of event lines is applied, with every
     /// line's result. Later tickets react to live prompts and stops here.
@@ -76,13 +90,15 @@ public final class MickEngine {
     /// - Parameter idleSeconds: seconds since the last keyboard or mouse input
     ///   (`SystemIdle.seconds` in the app; a fake in tests).
     /// - Parameter moves: the move catalogue; nil loads the bundled `moves.json` at start.
+    /// - Parameter lines: the line pools; nil loads the bundled `lines.json` at start.
     public init(home: MickHome, log: any MickLogger, tunables: Tunables = Tunables(),
                 clock: @escaping @Sendable () -> Date = { Date() },
                 idleSeconds: @escaping @MainActor () -> Double = { SystemIdle.seconds() },
                 activity: ActivityAssertion = ActivityAssertion(),
-                moves: MoveCatalog? = nil) {
+                moves: MoveCatalog? = nil, lines: LineCatalog? = nil) {
         self.home = home
         self.moves = moves
+        self.lines = lines
         self.activity = activity
         self.reminder = Reminder(timings: tunables.reminderTimings)
         self.reminderLog = ReminderLog(url: home.reminders)
@@ -105,6 +121,11 @@ public final class MickEngine {
         if moves == nil {
             do { moves = try MoveCatalog.bundled() } catch {
                 log.log("couldn't load the bundled moves.json (\(error)); reminders use a fixed routine")
+            }
+        }
+        if lines == nil {
+            do { lines = try LineCatalog.bundled() } catch {
+                log.log("couldn't load the bundled lines.json (\(error)); Mick uses fixed lines")
             }
         }
 
@@ -326,18 +347,36 @@ public final class MickEngine {
         // A routine is composed whenever a check could show, and its rotation is only
         // committed if the panel actually shows. Long sit is judged at show time (§10.1).
         var composition: Routine.Composition?
+        var voice: Voice.ReminderLines?
         var content = reminderContent
-        if reminder.check != nil, let moves {
-            let c = Routine.compose(Routine.kind(state, config: config, now: now), catalog: moves, rotation: state.rotation, using: &rng)
-            composition = c
-            content = .routine(c)
+        if reminder.check != nil {
+            let kind = Routine.kind(state, config: config, now: now)
+            if let moves {
+                let c = Routine.compose(kind, catalog: moves, rotation: state.rotation, using: &rng)
+                composition = c
+                content.items = c.items
+            }
+            // The opener by precedence (ignored tier, long sit, normal), and the done
+            // lines, rendered for the sitting time at show time (§10.2).
+            if let lines {
+                let ignored = MickMemory.ignoredToday(state, now: now)
+                voice = Voice.pickReminderLines(kind: kind, ignoredToday: ignored, catalog: lines, rotation: state.rotation, using: &rng)
+                if let voice { Voice.apply(voice, kind: kind, sittingMinutes: sittingMinutes(now: now), to: &content) }
+            }
         }
         let effects = reminder.advance(state: state, config: config, now: now, idleSeconds: idleSeconds(), content: content)
-        if let composition, effects.contains(where: { if case .show = $0 { true } else { false } }) {
-            state.rotation.usedMoveIDs = composition.rotation.usedMoveIDs
-            state.rotation.lastAreas = composition.rotation.lastAreas
+        if effects.contains(where: { if case .show = $0 { true } else { false } }) {
+            if let composition {
+                state.rotation.usedMoveIDs = composition.rotation.usedMoveIDs
+                state.rotation.lastAreas = composition.rotation.lastAreas
+                log.log("routine (\(composition.kind == .longSit ? "long sit" : "normal")): \(composition.items.map(\.id).joined(separator: ", "))")
+            }
+            reminderLines = voice
+            if let voice {
+                state.rotation.usedLineIDs[voice.openerPool.rawValue] = voice.rotation.usedLineIDs[voice.openerPool.rawValue]
+                log.log("opener from \(voice.openerPool.rawValue): \(voice.opener.id)")
+            }
             saveState()
-            log.log("routine (\(composition.kind == .longSit ? "long sit" : "normal")): \(composition.items.map(\.id).joined(separator: ", "))")
         }
         deliver(effects)
     }
@@ -358,6 +397,67 @@ public final class MickEngine {
         guard reminder.panel != nil else { return }
         Controls.snooze(&state, until: until)
         deliver(reminder.snooze(now: clock()))
+        announce(.snooze)
+        saveState()
+    }
+
+    // MARK: - Mick's voice (§10.2)
+
+    private func sittingMinutes(now: Date) -> Int {
+        Int(SittingTimer.sittingSeconds(state, now: now) / 60)
+    }
+
+    /// Picks the next line from `pool` and commits it to the rotation (saved with state).
+    private func say(_ pool: LinePool) -> Line? {
+        guard let lines, let pick = Lines.pick(pool, catalog: lines, rotation: state.rotation, using: &rng) else { return nil }
+        state.rotation.usedLineIDs[pool.rawValue] = pick.rotation.usedLineIDs[pool.rawValue]
+        saveState()
+        return pick.line
+    }
+
+    /// Shows a snooze, pause or resume line in the dropdown's status line for a while
+    /// (§6.4). Returns the line. Snooze, pause and resume never reset the sitting timer.
+    @discardableResult
+    public func announce(_ pool: LinePool) -> String? {
+        let now = clock()
+        guard let line = say(pool) else { return nil }
+        let text = SpokenTime.render(line.text, sittingMinutes: sittingMinutes(now: now))
+        announcement = (text, now.addingTimeInterval(tunables.announcementDuration))
+        log.log("mick says (\(pool.rawValue)): \(line.id)")
+        return text
+    }
+
+    /// The dropdown's Mick status line (§6.4): a recent snooze, pause or resume line,
+    /// otherwise a line from the calm, armed or glaring pool for the icon, with the
+    /// sitting time filled in. Keeps its pick until the pool changes or
+    /// `nextStatusLine()` is called.
+    public func statusLine() -> String {
+        let now = clock()
+        if let noticeLine { return noticeLine }
+        if let announcement, now < announcement.until { return announcement.text }
+        let pool = LinePool.status(for: icon)
+        if statusPick?.pool != pool {
+            statusPick = say(pool).map { (pool, $0) }
+        }
+        guard let statusPick else { return "Mick's in your corner." }
+        return SpokenTime.render(statusPick.line.text, sittingMinutes: sittingMinutes(now: now))
+    }
+
+    /// Moves the status line on to the next line of its pool (each time the menu opens).
+    public func nextStatusLine() {
+        statusPick = nil
+    }
+
+    /// A line for onboarding (§6.6), from the `onboarding` pool.
+    public func onboardingLine() -> String {
+        say(.onboarding)?.text ?? "So you wanna be a contender. Install the thing."
+    }
+
+    /// Commits a done line to the rotation once it shows.
+    private func markShown(_ pool: LinePool) {
+        guard let lines, let voice = reminderLines else { return }
+        let line = pool == .doneAll ? voice.doneAll : voice.donePartial
+        Lines.markUsed(line, in: pool, catalog: lines, rotation: &state.rotation)
         saveState()
     }
 
@@ -428,11 +528,24 @@ public final class MickEngine {
             // Always a normal routine, even after a long sit (§10.1).
             let c = Routine.compose(.normal, catalog: moves, rotation: state.rotation, using: &rng)
             composition = c
-            content = .routine(c)
+            content.items = c.items
+        }
+        // Mick's voice (§10.2): the opener by precedence for a normal routine, and the
+        // done lines, rendered for the sitting time.
+        var voice: Voice.ReminderLines?
+        if let lines {
+            let ignored = MickMemory.ignoredToday(state, now: now)
+            voice = Voice.pickReminderLines(kind: .normal, ignoredToday: ignored, catalog: lines, rotation: state.rotation, using: &rng)
+            if let voice { Voice.apply(voice, kind: .normal, sittingMinutes: sittingMinutes(now: now), to: &content) }
         }
         let sitting = Int(SittingTimer.sittingSeconds(state, now: now) / 60)
         let effects = reminder.stretchNow(content: content, sittingMinutes: sitting, now: now)
         guard !effects.isEmpty else { return false }
+        reminderLines = voice
+        if let voice {
+            state.rotation.usedLineIDs[voice.openerPool.rawValue] = voice.rotation.usedLineIDs[voice.openerPool.rawValue]
+            log.log("opener from \(voice.openerPool.rawValue): \(voice.opener.id)")
+        }
         if let composition {
             state.rotation.usedMoveIDs = composition.rotation.usedMoveIDs
             state.rotation.lastAreas = composition.rotation.lastAreas
@@ -448,6 +561,13 @@ public final class MickEngine {
 
     private func deliver(_ effects: [Reminder.Effect]) {
         effects.forEach(logEffect)
+        for effect in effects {
+            switch effect {
+            case .allTicked: markShown(.doneAll)
+            case .closing: markShown(.donePartial)
+            default: break
+            }
+        }
         let settlements = effects.compactMap { if case .settled(let s) = $0 { Settlement(s) } else { nil } }
         settlements.forEach(settle)
         scheduleReminderTimer()
@@ -511,6 +631,7 @@ public final class MickEngine {
         case .show(let p): log.log(p.isManual ? "stretch now shown" : "reminder shown for session \(p.sessionID ?? "none")")
         case .updated: break
         case .allTicked: log.log("reminder: all items ticked")
+        case .closing: log.log("reminder: closing with some ticked")
         case .closed(_, let why): log.log("reminder closed (\(why.rawValue))")
         case .settled: break  // logged with its outcome by settle(_:)
         }

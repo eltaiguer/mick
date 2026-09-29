@@ -458,6 +458,46 @@ import MickCore
         #expect(w.reminder.settling?.until == t0.addingTimeInterval(30 + 180))
     }
 
+    @Test func notNowWithSomeTickedShowsThePartialDoneLineThenCloses() {
+        var w = world()
+        shown(&w)
+        #expect(w.reminder.panel?.headline == ReminderContent.standard.opener)
+        w.tick(0)
+        w.run(for: 5)
+        w.effects += w.reminder.dismiss(now: w.now)
+        #expect(w.effects.contains { if case .closing = $0 { true } else { false } })
+        #expect(w.reminder.panel?.isClosing == true)
+        #expect(w.reminder.panel?.isDone == false)
+        #expect(w.reminder.panel?.headline == ReminderContent.standard.partialLine)
+        // Ticks are frozen while it shows, and a stop doesn't cut it short.
+        w.tick(1)
+        #expect(w.reminder.panel?.ticked == [0])
+        w.event(.stop, "A")
+        w.run(for: 2)
+        #expect(w.isVisible)
+        w.run(for: 1)
+        #expect(w.closes == [.notNow])
+        #expect(w.reminder.settling?.panel.ticked == [0])
+    }
+
+    @Test func aSecondNotNowWhileThePartialLineShowsClosesAtOnce() {
+        var w = world()
+        shown(&w)
+        w.tick(0)
+        w.effects += w.reminder.dismiss(now: w.now)
+        #expect(w.closes.isEmpty)
+        w.effects += w.reminder.dismiss(now: w.now)
+        #expect(w.closes == [.notNow])
+    }
+
+    @Test func notNowWithNothingTickedClosesAtOnce() {
+        var w = world()
+        shown(&w)
+        w.effects += w.reminder.dismiss(now: w.now)
+        #expect(w.closes == [.notNow])
+        #expect(!w.effects.contains { if case .closing = $0 { true } else { false } })
+    }
+
     @Test func hardCapClosesTenMinutesAfterAppearing() {
         var w = world()
         shown(&w)

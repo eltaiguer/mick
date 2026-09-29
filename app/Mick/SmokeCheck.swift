@@ -89,6 +89,12 @@ final class SmokeCheck {
         check(OnboardingStatus(engine.hooks) == .connected, "onboarding shows the check mark")
         check(statusItem.icon == .calm, "warning icon cleared")
         check(statusItem.topLine != "Claude Code hooks not detected. Set up…", "hooks-not-detected line cleared")
+        let sitting = Int(SittingTimer.sittingSeconds(engine.state, now: engine.now) / 60)
+        let calm = engine.lines?.lines(.statusCalm).flatMap { line in
+            [sitting - 1, sitting, sitting + 1].map { SpokenTime.render(line.text, sittingMinutes: $0) }
+        } ?? []
+        check(calm.contains(statusItem.topLine ?? ""), "status line from status_calm (\(statusItem.topLine ?? "none"))")
+        check(engine.state.rotation.usedLineIDs["onboarding"]?.count == 1, "onboarding line from the onboarding pool")
         check(elapsed < .seconds(2), "detected within 2 s (took \(elapsed.formatted(.units(allowed: [.milliseconds]))))")
         check(engine.state.sessions["smoke-session"]?.running == true, "session marked running")
 
@@ -202,8 +208,15 @@ final class SmokeCheck {
             try? await Task.sleep(for: .milliseconds(2500))
             check(panel.isVisible, "with a tick, the panel stays after the agent stops")
             check(panel.syntheticClick(control: ReminderPanelModel.notNowID), "clicked Not now")
-            await waitFor(.seconds(1)) { !panel.isVisible }
-            check(!panel.isVisible, "Not now closed the panel")
+            // Closing with some ticked shows the partial done line first (§10.2).
+            await waitFor(.seconds(1)) { panel.model.done }
+            let partial = engine.reminder.panel?.content.partialLine
+            check(panel.isVisible && panel.model.headline == partial && partial != nil,
+                  "closing with a tick shows the done_partial line (\(panel.model.headline))")
+            check(engine.lines.map { $0.lines(.donePartial).map(\.text).contains(partial ?? "") } == true, "that line comes from done_partial")
+            check(engine.state.rotation.usedLineIDs["done_partial"]?.count == 1, "done_partial line recorded in the rotation")
+            await waitFor(.seconds(5)) { !panel.isVisible }
+            check(!panel.isVisible, "Not now closed the panel after the done line")
             check(engine.reminder.settling?.reason == .notNow, "closed by Not now, now settling")
 
         case .shortRun, .stretchNow, .menuControls:
@@ -346,7 +359,16 @@ final class SmokeCheck {
         let moves = content.items.dropFirst().compactMap { engine.moves?.move(id: $0.id) }
         let isRoutine = content.items.first?.id == Routine.standUp.id && content.items.count == 3 && moves.count == 2
             && (moves[0].id == Routine.walkID || moves[0].area != moves[1].area)
-        check(!content.opener.isEmpty && isRoutine, "opener and a routine: Stand up + 2 moves from different areas (\(content.items.map(\.id)))")
+        check(engine.lines != nil, "bundled lines.json loaded")
+        // Mick's voice (#9): the opener comes from the pool its precedence picks,
+        // rendered for the sitting time, and is recorded in the rotation.
+        let ignored = MickMemory.ignoredToday(engine.state, now: engine.now)
+        let openerPool = LinePool.opener(ignoredToday: ignored, kind: moves.first?.id == Routine.walkID ? .longSit : .normal)
+        let minutes = engine.reminder.panel?.sittingMinutes ?? -1
+        let rendered = engine.lines?.lines(openerPool).map { SpokenTime.render($0.text, sittingMinutes: minutes) } ?? []
+        check(rendered.contains(content.opener), "opener from \(openerPool.rawValue): \(content.opener)")
+        check(engine.state.rotation.usedLineIDs[openerPool.rawValue]?.count == 1, "opener recorded in the rotation")
+        check(!content.opener.isEmpty && isRoutine,"opener and a routine: Stand up + 2 moves from different areas (\(content.items.map(\.id)))")
         let saved = engine.state.rotation
         check(saved.lastAreas == moves.map(\.area) && moves.allSatisfy { saved.usedMoveIDs.contains($0.id) }, "rotation recorded (\(saved.usedMoveIDs))")
     }

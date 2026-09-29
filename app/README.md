@@ -15,14 +15,17 @@
     `MickMemory`, `ReminderRecord`: the §8 table, `nag_after`, `ignored_today` and its
     midnight rollover, the reminder log line), snooze, pause and quiet hours
     (`SnoozeOption`, `Controls`, `StatusNotice`; Stretch now is `Reminder.stretchNow`),
+    Mick's voice (`LinePool`, `LineCatalog`, `Lines`, `Voice`, `SpokenTime`,
+    `VoiceRules`: the line pools of §10.2, opener precedence, rotation without repeats,
+    `{minutes}`/`{hours}` spelled out, and the voice rules every line is linted against),
     panel placement (`PanelPlacement`), the `state.json` and `config.json` models, and
     the simulation scripts (`SimulationScenario`).
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
     tailer, the App Nap activity (`ActivityAssertion`), `reminders.jsonl`
-    (`ReminderLog`), the bundled move catalogue
-    (`Sources/MickIO/Resources/moves.json`, a package resource so the app and
-    `swift test` read the same file), and `MickEngine`, the one
+    (`ReminderLog`), the bundled move catalogue and line pools
+    (`Sources/MickIO/Resources/moves.json` and `lines.json`, package resources so the
+    app and `swift test` read the same files), and `MickEngine`, the one
     object that owns state, feeds live events to the reminder, runs its one-shot timer
     and that the app observes, plus `Simulation`/`SimulationRun` (temporary homes and
     scenario playback).
@@ -107,3 +110,14 @@ check the pause survives a relaunch).
 Set `MICK_SMOKE_SNAPSHOT=/path/panel.png` to save a picture of the panel.
 `--smoke-idle SECONDS` (smoke only) replaces the real idle reading with a fixed one, so
 the sitting-timer scenarios in `smoke.sh` don't depend on whether someone is at the Mac.
+
+## Mick's lines
+
+`MickCore/Sources/MickIO/Resources/lines.json` maps each pool name (§10.2) to a list of
+`{ "id", "text" }`. Ids key the rotation in `state.json` (`rotation.used_line_ids`), so
+reword a line in place and add new ones with new ids. Opener pools need at least 8
+lines and the others 5. Lines never hardcode a duration: write `{minutes} minutes` or
+`{hours}` (which includes its unit) and Mick spells it out. `swift test` checks every
+line against the voice rules (mild language, sitting-only insults, no pushing through
+pain, no film names or quotes, no numbers or time units), but a person still has to
+read new lines for originality and tone.

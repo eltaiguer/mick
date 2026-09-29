@@ -49,8 +49,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         populate(menu)
     }
 
-    // Rebuilding in place (not replacing item.menu) keeps an open menu intact.
+    // Rebuilding in place (not replacing item.menu) keeps an open menu intact. Each
+    // open moves the status line on to the next line of its pool.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        engine.nextStatusLine()
         populate(menu)
     }
 
@@ -62,9 +64,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             setUp.target = self
             menu.addItem(setUp)
         } else {
-            // A snooze/pause/resume line shows briefly (§6.4); otherwise a placeholder
-            // until Mick's voice (#9) lands.
-            let status = NSMenuItem(title: engine.noticeLine ?? "Mick's in your corner.", action: nil, keyEquivalent: "")
+            // Mick's status line (§6.4): calm, armed or glaring, or a recent snooze,
+            // pause or resume line.
+            let status = NSMenuItem(title: engine.statusLine(), action: nil, keyEquivalent: "")
             status.isEnabled = false
             menu.addItem(status)
         }
