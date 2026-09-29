@@ -28,6 +28,8 @@ final class SimulationController {
     private var queue: [SimulationScenario.ID] = []
     private var timer: Timer?
     private var runCount = 0
+    /// True from `start` until its queue is done (or stopped).
+    private var queueActive = false
     private var failedChecks = 0
     private var passedChecks = 0
     /// Called with true if every check passed, once a started queue is done.
@@ -45,8 +47,6 @@ final class SimulationController {
     }
 
     var isRunning: Bool { active != nil }
-    /// The running scenario's panel, for checks.
-    var activePanel: ReminderPanelController? { active?.panel }
 
     // MARK: - Running
 
@@ -54,6 +54,7 @@ final class SimulationController {
     func start(_ ids: [SimulationScenario.ID]) {
         stop()
         queue = ids
+        queueActive = true
         passedChecks = 0
         failedChecks = 0
         startNext()
@@ -61,13 +62,17 @@ final class SimulationController {
 
     /// Stops the current run and clears the queue.
     func stop() {
+        queueActive = false
         queue = []
         if let active { finish(active, completed: false) }
     }
 
     private func startNext() {
         guard !queue.isEmpty else {
-            if runCount > 0 { onQueueFinished?(failedChecks == 0) }
+            if queueActive {
+                queueActive = false
+                onQueueFinished?(failedChecks == 0)
+            }
             return
         }
         let id = queue.removeFirst()

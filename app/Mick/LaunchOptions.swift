@@ -133,6 +133,9 @@ struct LaunchOptions: Equatable {
         if options.simulate == nil, options.simulateIdle != nil || options.simulateExit || options.simulateViaMenu {
             throw ParseError.conflict("--simulate-idle, --simulate-exit and --simulate-via-menu need --simulate")
         }
+        if options.simulate == .menuOnly, options.simulateExit || options.simulateViaMenu {
+            throw ParseError.conflict("--simulate-exit and --simulate-via-menu need a scenario (--simulate SCENARIO)")
+        }
         if options.simulateViaMenu, case .scenarios(let ids)? = options.simulate, ids.count != 1 {
             throw ParseError.conflict("--simulate-via-menu plays one scenario")
         }
