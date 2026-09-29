@@ -1,0 +1,12 @@
+run: activity-on
+duration: 34.003 min
+timer (one-shot, re-armed): fires=67 mean_late=0.005s max_late=0.120s late>1s=0
+file watch (vnode, main queue): callbacks=43 mean_latency=0.003s max_latency=0.014s over2s=0
+workspace signals: none
+
+run: activity-off
+duration: 34.003 min
+timer (one-shot, re-armed): fires=67 mean_late=0.005s max_late=0.120s late>1s=0
+file watch (vnode, main queue): callbacks=43 mean_latency=0.003s max_latency=0.016s over2s=0
+workspace signals: none
+
