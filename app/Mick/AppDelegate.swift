@@ -40,9 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.onboarding.show(activate: true)
         }
 
-        // First launch, or the hooks were never seen: explain how to set up.
+        // First launch, or the hooks were never seen: explain how to set up. An
+        // LSUIElement app isn't activated when opened from Finder, so bring onboarding
+        // forward on a real first launch (the person just opened Mick). Later launches,
+        // such as the login item, show it without taking focus. The smoke check never
+        // activates, so unattended runs don't pull focus.
         if !engine.hooks.everDetected {
-            onboarding.show(activate: false)
+            onboarding.show(activate: engine.createdHome && !options.smoke)
         }
 
         if options.smoke {
