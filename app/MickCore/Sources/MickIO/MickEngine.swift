@@ -15,6 +15,8 @@ public final class MickEngine {
         public var tickInterval: TimeInterval = 60
         /// Poll system idle time this often (§6.3).
         public var pollInterval: TimeInterval = SittingTimer.pollInterval
+        /// The reminder's lifetime timings (§7, §9.2). Only simulation mode shortens them.
+        public var reminderTimings: Reminder.Timings = .standard
         public init() {}
     }
 
@@ -32,10 +34,18 @@ public final class MickEngine {
     public private(set) var configOutcome: LoadOutcome = .missing
     public private(set) var stateOutcome: LoadOutcome = .missing
     public private(set) var isRunning = false
+    /// The reminder lifecycle: scheduled check, visible panel or settling (§7, §9).
+    /// In memory only (§12.1): a relaunch drops it.
+    public private(set) var reminder: Reminder
+    /// What the panel shows next. Fixed until routines (#8) and Mick's voice (#9).
+    public var reminderContent: ReminderContent = .standard
 
     /// Called on the main actor after each batch of event lines is applied, with every
     /// line's result. Later tickets react to live prompts and stops here.
     @ObservationIgnored public var onRecords: (([IntakeRecord], EventOrigin) -> Void)?
+    /// Called on the main actor with every batch of reminder effects (show, tick
+    /// updates, done line, close). The app's panel renders from these.
+    @ObservationIgnored public var onReminder: (([Reminder.Effect]) -> Void)?
 
     @ObservationIgnored private var tailer: EventTailer?
     @ObservationIgnored private var timer: Timer?
@@ -44,13 +54,18 @@ public final class MickEngine {
     @ObservationIgnored private var sleptAt: Date?
     @ObservationIgnored private var resignedAt: Date?
     @ObservationIgnored private var lastReset: SittingTimer.Reset?
+    @ObservationIgnored private var reminderTimer: Timer?
+    @ObservationIgnored public let activity: ActivityAssertion
 
     /// - Parameter idleSeconds: seconds since the last keyboard or mouse input
     ///   (`SystemIdle.seconds` in the app; a fake in tests).
     public init(home: MickHome, log: any MickLogger, tunables: Tunables = Tunables(),
                 clock: @escaping @Sendable () -> Date = { Date() },
-                idleSeconds: @escaping @MainActor () -> Double = { SystemIdle.seconds() }) {
+                idleSeconds: @escaping @MainActor () -> Double = { SystemIdle.seconds() },
+                activity: ActivityAssertion = ActivityAssertion()) {
         self.home = home
+        self.activity = activity
+        self.reminder = Reminder(timings: tunables.reminderTimings)
         self.log = log
         self.tunables = tunables
         self.clock = clock
@@ -113,6 +128,7 @@ public final class MickEngine {
         RunLoop.main.add(pollTimer, forMode: .common)
         self.pollTimer = pollTimer
         isRunning = true
+        updateActivity()
     }
 
     public func stop() {
@@ -122,8 +138,11 @@ public final class MickEngine {
         pollTimer = nil
         tailer?.stop()
         tailer = nil
+        reminderTimer?.invalidate()
+        reminderTimer = nil
         if isRunning { saveState() }
         isRunning = false
+        activity.hold(false)
     }
 
     /// Periodic housekeeping: prune idle sessions, re-evaluate the 7-day warning,
@@ -133,6 +152,7 @@ public final class MickEngine {
         if !SessionBook.prune(&state, now: now).isEmpty { saveState() }
         refreshHooks(now: now)
         tailer?.poke()
+        updateActivity()
     }
 
     // MARK: - Sitting timer
@@ -217,10 +237,20 @@ public final class MickEngine {
 
     func handle(_ batch: TailBatch) {
         let now = clock()
-        let records = Intake.apply(lines: batch.lines, origin: batch.origin, now: now, to: &state)
-        for record in records {
+        var records: [IntakeRecord] = []
+        var effects: [Reminder.Effect] = []
+        // One line at a time, so the reminder sees the sessions as they were right
+        // after each event (a hand-off picks from the sessions running at that point).
+        for line in batch.lines {
+            let record = Intake.apply(lines: [line], origin: batch.origin, now: now, to: &state)[0]
+            records.append(record)
             if case .failure(let error) = record.result {
                 log.log("skipped malformed event line (\(error)): \(record.line.prefix(200))")
+            }
+            // Only live events drive reminders; backlog updates bookkeeping only (§6.3).
+            if batch.origin == .live, let event = record.event, case .applied(let change, let canTrigger)? = record.disposition {
+                effects += reminder.sessionChanged(change, sessionID: event.sessionID, canTrigger: canTrigger,
+                                                   state: state, config: config, now: now)
             }
         }
         if batch.source == .main, let offset = batch.offset { state.eventsOffset = offset }
@@ -228,6 +258,75 @@ public final class MickEngine {
         refreshHooks(now: now)
         saveState()
         if !records.isEmpty { onRecords?(records, batch.origin) }
+        deliver(effects)
+    }
+
+    // MARK: - Reminder
+
+    /// Runs whatever reminder timers are due (the one-shot timer calls this; tests call
+    /// it after moving their clock).
+    public func runReminderTimers() {
+        let effects = reminder.advance(state: state, config: config, now: clock(), idleSeconds: idleSeconds(), content: reminderContent)
+        deliver(effects)
+    }
+
+    /// A checkbox on the panel.
+    public func setReminderItem(_ index: Int, ticked: Bool) {
+        deliver(reminder.setTicked(index, ticked, now: clock()))
+    }
+
+    /// "Not now".
+    public func dismissReminder() {
+        deliver(reminder.dismiss(now: clock()))
+    }
+
+    /// True while the App Nap activity is held (§6.3).
+    public var isHoldingActivity: Bool { activity.isHeld }
+
+    private func deliver(_ effects: [Reminder.Effect]) {
+        effects.forEach(logEffect)
+        scheduleReminderTimer()
+        updateActivity()
+        if !effects.isEmpty { onReminder?(effects) }
+    }
+
+    /// One one-shot `Timer` for the next reminder deadline, with zero tolerance
+    /// (`asyncAfter` runs ~5 % late; signals spike, #2).
+    private func scheduleReminderTimer() {
+        reminderTimer?.invalidate()
+        reminderTimer = nil
+        guard isRunning, let deadline = reminder.nextDeadline else { return }
+        let timer = Timer(timeInterval: max(0, deadline.timeIntervalSince(clock())), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.runReminderTimers() }
+        }
+        timer.tolerance = 0
+        RunLoop.main.add(timer, forMode: .common)
+        reminderTimer = timer
+    }
+
+    private func updateActivity() {
+        let wanted = isRunning && reminder.needsActivity(state)
+        if activity.hold(wanted) {
+            log.log(wanted ? "holding activity (session running or reminder live)" : "released activity")
+        }
+    }
+
+    private func logEffect(_ effect: Reminder.Effect) {
+        switch effect {
+        case .scheduled(let s, let at, let from):
+            let wait = Int(at.timeIntervalSince(clock()).rounded())
+            log.log("reminder check scheduled for session \(s) in \(wait)s" + (from.map { " (handed off from \($0))" } ?? ""))
+        case .rescheduled(let s, _): log.log("reminder check rescheduled for session \(s) (new prompt)")
+        case .notScheduled(_, .notArmed), .notScheduled(_, .busy): break  // every prompt; too noisy
+        case .notScheduled(let s, let b): log.log("prompt on session \(s) didn't schedule a reminder (\(b))")
+        case .waitingForGap(let s): log.log("reminder for session \(s) waiting for a 3 s input gap")
+        case .dropped(let s, let why): log.log("reminder check for session \(s) dropped (\(why))")
+        case .show(let p): log.log("reminder shown for session \(p.sessionID ?? "none")")
+        case .updated: break
+        case .allTicked: log.log("reminder: all items ticked")
+        case .closed(_, let why): log.log("reminder closed (\(why.rawValue))")
+        case .settled(let s): log.log("reminder settled (\(s.reason.rawValue), ticked \(s.panel.ticked.count)/\(s.panel.content.items.count))")
+        }
     }
 
     private func refreshHooks(now: Date) {

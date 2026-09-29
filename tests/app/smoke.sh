@@ -129,7 +129,24 @@ run_smoke "$HOME7" "$WORK/idle.out" --smoke-idle 600
 [ $? -eq 0 ] && grep -q 'icon=calm ' "$WORK/idle.out" && ok "idle 10 min: sitting time reset" \
   || fail "idle reset" "$(grep -E 'INFO icon|FAIL' "$WORK/idle.out")"
 
-# --- 5. Refuses to run --smoke without MICK_HOME ----------------------------
+# --- 5. First real reminder (#6) -------------------------------------------
+# Armed (sitting 60 min, hooks known), 2 s show delay, a fixed 10 s idle reading so
+# the 3 s input-gap check passes. Real hook events drive each scenario.
+echo "== reminder"
+for scenario in show-stop short-run tick-stays; do
+  H="$WORK/reminder-$scenario"; sit_state "$H" -60M -1M
+  printf '{"sit_threshold_minutes":50,"show_delay_seconds":2}\n' >"$H/config.json"
+  run_smoke "$H" "$WORK/reminder-$scenario.out" --smoke-hook "$HOOK" --smoke-reminder "$scenario" --smoke-idle 10
+  status=$?
+  sed 's/^/     | /' "$WORK/reminder-$scenario.out"
+  [ $status -eq 0 ] && grep -q '^SMOKE OK' "$WORK/reminder-$scenario.out" && ok "reminder scenario $scenario passed" \
+    || fail "reminder scenario $scenario (exit $status)" "$(tail -5 "$WORK/reminder-$scenario.out.stderr")"
+done
+grep -q 'reminder shown for session smoke-reminder' "$WORK/reminder-show-stop/log.txt" && grep -q 'reminder closed (agentStopped)' "$WORK/reminder-show-stop/log.txt" \
+  && ok "log.txt records the show and the close" || fail "reminder show/close not logged"
+grep -q 'reminder shown' "$WORK/reminder-short-run/log.txt" && fail "short run showed a reminder" || ok "short run: no reminder in log.txt"
+
+# --- 6. Refuses to run --smoke without MICK_HOME ----------------------------
 echo "== guard"
 env -u MICK_HOME HOME="$WORK/fakehome" "$BIN" --smoke >/dev/null 2>&1
 [ $? -eq 2 ] && [ ! -e "$WORK/fakehome/.mick" ] && ok "--smoke refuses to run without MICK_HOME" || fail "--smoke ran without MICK_HOME"

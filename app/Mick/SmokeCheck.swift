@@ -54,6 +54,11 @@ final class SmokeCheck {
             finish()
             return
         }
+        if let scenario = delegate.options.smokeReminder {
+            await runReminder(scenario, hook: hook)
+            finish()
+            return
+        }
 
         // Warning state until the hooks are detected.
         check(engine.hooks == .notDetected, "hooks not detected before the first event")
@@ -65,7 +70,7 @@ final class SmokeCheck {
         // A real hook event, written by the plugin's script.
         let clock = ContinuousClock()
         let started = clock.now
-        let status = runHook(path: hook, home: home)
+        let status = runHook(path: hook, home: home, kind: "prompt", session: "smoke-session")
         check(status == 0, "hook script exited 0")
         let deadline = started + .seconds(2)
         while clock.now < deadline, !(engine.hooks.everDetected && statusItem.icon == .calm) {
@@ -85,10 +90,134 @@ final class SmokeCheck {
         finish()
     }
 
-    private func runHook(path: String, home: MickHome) -> Int32 {
+    // MARK: - Reminder scenarios (#6)
+
+    /// Expects an armed state (sitting past the threshold, hooks known) and a short show
+    /// delay in `MICK_HOME`, and a fixed idle reading of at least 3 s (`--smoke-idle`).
+    private func runReminder(_ scenario: LaunchOptions.SmokeReminder, hook: String) async {
+        let engine = delegate.engine!
+        let panel = delegate.reminderPanel!
+        let home = engine.home
+        let delay = Double(engine.config.showDelaySeconds)
+        let session = "smoke-reminder"
+        let me = NSRunningApplication.current.processIdentifier
+        let frontBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        print("INFO scenario=\(scenario.rawValue) delay=\(delay)s frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none")")
+
+        check(engine.icon == .armed || engine.icon == .glaring, "armed before the prompt (icon \(engine.icon.rawValue))")
+        check(engine.reminder.phase == .idle, "no reminder before the prompt")
+        check(!engine.isHoldingActivity, "no activity held while nothing is running")
+
+        let clock = ContinuousClock()
+        let prompted = clock.now
+        check(runHook(path: hook, home: home, kind: "prompt", session: session) == 0, "prompt hook exited 0")
+        await waitFor(.seconds(2)) { engine.state.sessions[session]?.running == true }
+        check(engine.reminder.check?.sessionID == session, "check scheduled for the session")
+        check(engine.isHoldingActivity, "activity held while a session runs and a check is scheduled")
+
+        if scenario == .shortRun {
+            check(runHook(path: hook, home: home, kind: "stop", session: session) == 0, "stop hook exited 0")
+            await waitFor(.seconds(2)) { engine.state.sessions[session]?.running == false }
+            check(engine.reminder.phase == .idle, "stop within the show delay cancels the check")
+            try? await Task.sleep(for: .seconds(delay + 2))
+            check(panel.showCount == 0 && !panel.isVisible, "a run shorter than the show delay shows nothing")
+            check(!engine.isHoldingActivity, "activity released once nothing is running or scheduled")
+            return
+        }
+
+        await waitFor(.seconds(delay + 4)) { panel.isVisible }
+        let shownAfter = clock.now - prompted
+        check(panel.isVisible, "panel shown after the show delay (\(seconds(shownAfter)))")
+        check(shownAfter >= .seconds(delay - 0.1), "not shown before the show delay")
+        checkPanel(panel, frontBefore: frontBefore, me: me)
+
+        switch scenario {
+        case .showStop:
+            let stopped = clock.now
+            check(runHook(path: hook, home: home, kind: "stop", session: session) == 0, "stop hook exited 0")
+            await waitFor(.seconds(2)) { !panel.isVisible }
+            let took = clock.now - stopped
+            check(!panel.isVisible && took < .seconds(2), "untouched panel closed within 2 s of the stop (took \(seconds(took)))")
+            check(engine.reminder.settling?.reason == .agentStopped, "closed because the agent stopped")
+            check(engine.isHoldingActivity, "activity still held while the reminder settles")
+            check(frontmostUnchanged(frontBefore, me: me), "frontmost app unchanged after close")
+
+        case .tickStays:
+            // Let SwiftUI report the laid-out control frames (nobody clicks in 0 ms).
+            await waitFor(.seconds(1)) { panel.model.controlFrames.count == 4 }
+            try? await Task.sleep(for: .milliseconds(300))
+            check(panel.syntheticClick(control: ReminderPanelModel.toggleID(0)), "clicked the first checkbox")
+            await waitFor(.seconds(1)) { engine.reminder.panel?.ticked == [0] }
+            check(engine.reminder.panel?.ticked == [0], "one click ticked Stand up")
+            check(panel.model.ticked == [0], "panel shows the tick")
+            check(!panel.panel.isKeyWindow && !NSApp.isActive, "click didn't make the panel key or activate Mick")
+            check(frontmostUnchanged(frontBefore, me: me), "frontmost app unchanged after the click")
+            check(runHook(path: hook, home: home, kind: "stop", session: session) == 0, "stop hook exited 0")
+            await waitFor(.seconds(2)) { engine.state.sessions[session]?.running == false }
+            try? await Task.sleep(for: .milliseconds(2500))
+            check(panel.isVisible, "with a tick, the panel stays after the agent stops")
+            check(panel.syntheticClick(control: ReminderPanelModel.notNowID), "clicked Not now")
+            await waitFor(.seconds(1)) { !panel.isVisible }
+            check(!panel.isVisible, "Not now closed the panel")
+            check(engine.reminder.settling?.reason == .notNow, "closed by Not now, now settling")
+
+        case .shortRun:
+            break
+        }
+    }
+
+    private func checkPanel(_ controller: ReminderPanelController, frontBefore: pid_t?, me: pid_t) {
+        let panel = controller.panel
+        check(!panel.isKeyWindow, "panel is not key")
+        check(!panel.canBecomeKey && !panel.canBecomeMain, "panel can't become key or main")
+        check(!NSApp.isActive, "showing the panel didn't activate Mick")
+        check(NSApp.keyWindow == nil, "Mick has no key window")
+        check(frontmostUnchanged(frontBefore, me: me), "frontmost app unchanged (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none"))")
+        check(panel.styleMask.contains(.nonactivatingPanel) && panel.styleMask.contains(.borderless), "borderless non-activating panel")
+        check(panel.collectionBehavior == ReminderPanel.collectionBehavior && !panel.collectionBehavior.contains(.moveToActiveSpace), "collection behavior as in §9.3")
+        check(panel.level == .statusBar, "status bar window level")
+        check(!panel.hidesOnDeactivate && panel.becomesKeyOnlyIfNeeded, "hidesOnDeactivate off, becomesKeyOnlyIfNeeded on")
+        check(controller.hostingView.acceptsFirstMouse(for: nil) && !controller.hostingView.needsPanelToBecomeKey, "content takes the first click without key")
+        let onScreen = NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: -1, dy: -1).contains(panel.frame) }
+        check(onScreen, "panel inside a screen's visible frame (\(panel.frame))")
+        if let anchor = controller.statusItemAnchor(), let screen = NSScreen.screens.first(where: { $0.frame.contains(CGPoint(x: anchor.midX, y: anchor.midY)) }),
+           !ScreenGeometry(screen: screen).isBehindNotch(anchor) {
+            let clampedX = abs(panel.frame.midX - anchor.midX) < 1 || abs(panel.frame.maxX - (screen.visibleFrame.maxX - PanelPlacement.margin)) < 1
+            check(clampedX && abs(panel.frame.maxY - min(anchor.minY - PanelPlacement.gap, screen.visibleFrame.maxY)) <= 2, "anchored under the status item (anchor \(anchor), panel \(panel.frame))")
+        } else {
+            print("INFO status item hidden or behind the notch; panel placed top-right at \(panel.frame)")
+        }
+        // Optional picture of the panel for a human to look at later (not a check).
+        if let path = ProcessInfo.processInfo.environment["MICK_SMOKE_SNAPSHOT"], !path.isEmpty,
+           let rep = controller.hostingView.bitmapImageRepForCachingDisplay(in: controller.hostingView.bounds) {
+            controller.hostingView.cacheDisplay(in: controller.hostingView.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+        let content = controller.model.content
+        check(!content.opener.isEmpty && content.items.map(\.title) == ["Stand up", "Back bend", "Shoulder rolls"], "opener and Stand up + 2 moves")
+    }
+
+    private func seconds(_ d: Duration) -> String {
+        String(format: "%.2f s", Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18)
+    }
+
+    private func frontmostUnchanged(_ before: pid_t?, me: pid_t) -> Bool {
+        let now = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        return now != me && now == before
+    }
+
+    private func waitFor(_ timeout: Duration, _ condition: () -> Bool) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while clock.now < deadline, !condition() {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func runHook(path: String, home: MickHome, kind: String, session: String) -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["prompt"]
+        process.arguments = [kind]
         process.environment = ["MICK_HOME": home.url.path, "PATH": "/usr/bin:/bin"]
         let stdin = Pipe()
         process.standardInput = stdin
@@ -98,7 +227,7 @@ final class SmokeCheck {
             print("FAIL couldn't run the hook: \(error.localizedDescription)")
             return -1
         }
-        let payload = #"{"session_id":"smoke-session","cwd":"/tmp/mick-smoke","hook_event_name":"UserPromptSubmit","prompt":"SMOKE-SECRET"}"#
+        let payload = #"{"session_id":"\#(session)","cwd":"/tmp/mick-smoke","hook_event_name":"UserPromptSubmit","prompt":"SMOKE-SECRET"}"#
         stdin.fileHandleForWriting.write(Data(payload.utf8))
         try? stdin.fileHandleForWriting.close()
         process.waitUntilExit()

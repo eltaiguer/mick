@@ -13,6 +13,16 @@ struct LaunchOptions: Equatable {
     /// instead of the real one, so sitting-timer checks don't depend on whether
     /// someone is using the Mac.
     var smokeIdle: Double?
+    /// `--smoke-reminder SCENARIO`: with `--smoke` and `--smoke-hook`, run one reminder
+    /// scenario end to end with real hook events (`show-stop`, `short-run`, `tick-stays`).
+    /// The caller prepares an armed state and a short show delay in `MICK_HOME`.
+    var smokeReminder: SmokeReminder?
+
+    enum SmokeReminder: String, CaseIterable {
+        case showStop = "show-stop"
+        case shortRun = "short-run"
+        case tickStays = "tick-stays"
+    }
 
     enum ParseError: Error, Equatable, CustomStringConvertible {
         case unknown(String)
@@ -39,6 +49,11 @@ struct LaunchOptions: Equatable {
             case "--smoke-hook":
                 guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
                 options.smokeHook = args[i + 1]
+                i += 1
+            case "--smoke-reminder":
+                guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
+                guard let scenario = SmokeReminder(rawValue: args[i + 1]) else { throw ParseError.badValue(arg) }
+                options.smokeReminder = scenario
                 i += 1
             case "--smoke-idle":
                 guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
