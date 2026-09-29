@@ -14,7 +14,7 @@
     and area rules of §10.1), reminder outcomes and Mick's memory (`Outcome`,
     `MickMemory`, `ReminderRecord`: the §8 table, `nag_after`, `ignored_today` and its
     midnight rollover, the reminder log line), snooze, pause and quiet hours
-    (`SnoozeOption`, `Controls`, `StatusNotice`; Stretch now is `Reminder.stretchNow`),
+    (`SnoozeOption`, `Controls`; Stretch now is `Reminder.stretchNow`),
     Mick's voice (`LinePool`, `LineCatalog`, `Lines`, `Voice`, `SpokenTime`,
     `VoiceRules`: the line pools of §10.2, opener precedence, rotation without repeats,
     `{minutes}`/`{hours}` spelled out, and the voice rules every line is linted against),

@@ -204,7 +204,7 @@ final class SmokeCheck {
             check(engine.state.sittingSince == sitting, "snooze didn't reset the sitting timer")
             check(engine.state.nagAfter == nil && engine.state.today.ignored == 0, "no penalty")
             await checkIcon(.snoozed)
-            await checkStatusLine("Sixty minutes. I'll be here.", "Mick's snooze line in the status line")
+            await checkStatusLine(from: .snooze, "Mick's snooze line in the status line")
             let log = (try? String(contentsOf: home.reminders, encoding: .utf8)) ?? ""
             check(log.contains(#""outcome":"snoozed""#) && log.contains(#""manual":false"#), "reminders.jsonl records the snooze")
             check(frontmostUnchanged(frontBefore, me: me), "frontmost app unchanged after snoozing")
@@ -244,9 +244,12 @@ final class SmokeCheck {
 
     /// The status item re-renders on the next main-queue turn after the engine
     /// changes; waits for its status line to read `line`.
-    private func checkStatusLine(_ line: String, _ what: String) async {
-        await waitFor(.seconds(1)) { statusItem().topLine == line }
-        check(statusItem().topLine == line, "\(what) (\(statusItem().topLine ?? "none"))")
+    /// The status line shows a line from `pool` in the bundled `lines.json`.
+    private func checkStatusLine(from pool: LinePool, _ what: String) async {
+        let pooled = Set(((try? LineCatalog.bundled())?.lines(pool) ?? []).map(\.text))
+        func shown() -> Bool { statusItem().topLine.map(pooled.contains) ?? false }
+        await waitFor(.seconds(1)) { shown() }
+        check(!pooled.isEmpty && shown(), "\(what) (\(statusItem().topLine ?? "none"))")
     }
 
     private func checkIcon(_ icon: MenuBarIcon) async {
@@ -311,7 +314,7 @@ final class SmokeCheck {
         check(choose(StatusItemController.pauseTitle), "chose Pause")
         check(engine.isPaused && saved().paused, "paused, and saved to state.json")
         await checkIcon(.paused)
-        await checkStatusLine("Fine. Go soft.", "Mick's pause line in the status line")
+        await checkStatusLine(from: .pause, "Mick's pause line in the status line")
         check(statusItem().menuItem(StatusItemController.resumeTitle) != nil, "menu offers Resume while paused")
         check(runHook(path: hook, home: home, kind: "prompt", session: "smoke-paused") == 0, "prompt hook exited 0")
         await waitFor(.seconds(2)) { engine.state.sessions["smoke-paused"]?.running == true }
@@ -321,7 +324,7 @@ final class SmokeCheck {
         // Resume.
         check(choose(StatusItemController.resumeTitle), "chose Resume")
         check(!engine.isPaused && !saved().paused, "resumed, and saved")
-        await checkStatusLine("About time.", "Mick's resume line in the status line")
+        await checkStatusLine(from: .resume, "Mick's resume line in the status line")
 
         // Snooze from the menu.
         let snoozeMenu = statusItem().menuItem(StatusItemController.snoozeTitle)?.submenu
@@ -331,7 +334,7 @@ final class SmokeCheck {
         let until = engine.state.snoozedUntil ?? .distantPast
         check(abs(until.timeIntervalSince(chosenAt) - 3600) < 5, "snoozed for an hour")
         await checkIcon(.snoozed)
-        await checkStatusLine("Sixty minutes. I'll be here.", "Mick's snooze line in the status line")
+        await checkStatusLine(from: .snooze, "Mick's snooze line in the status line")
         let cancel = statusItem().menuItem(StatusItemController.snoozeTitle)?.submenu?.items.first { $0.title == StatusItemController.cancelSnoozeTitle }
         check(cancel.map { statusItem().choose($0) } ?? false, "chose Cancel snooze")
         check(engine.state.snoozedUntil == nil, "snooze cancelled")

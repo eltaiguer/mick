@@ -77,7 +77,8 @@ import MickCore
         #expect(e.state.sittingSince == sitting)
         #expect(e.state.today.ignored == 0 && e.state.nagAfter == nil)
         #expect(e.icon == .snoozed)
-        #expect(e.noticeLine == "Sixty minutes. I'll be here.")
+        #expect(e.state.rotation.usedLineIDs["snooze"]?.count == 1)
+        #expect(e.announcement != nil && e.statusLine() == e.announcement?.text)
         let r = try records(temp)
         #expect(r.count == 1)
         #expect(r.first?["outcome"] as? String == "snoozed")
@@ -100,12 +101,14 @@ import MickCore
         #expect(e.state.snoozedUntil == t0.addingTimeInterval(1800))
         #expect(e.state.sittingSince == sitting)
         #expect(e.icon == .snoozed)
-        #expect(e.noticeLine == "Thirty minutes. I'll be here.")
+        #expect(e.state.rotation.usedLineIDs["snooze"]?.count == 1)
+        #expect(e.announcement != nil && e.statusLine() == e.announcement?.text)
         #expect(e.lastSettlement == nil)
 
-        // The notice is brief.
-        sys.advance(StatusNotice.duration)
-        #expect(e.noticeLine == nil)
+        // The line is brief.
+        let snoozeLine = e.announcement?.text
+        sys.advance(MickEngine.Tunables().announcementDuration)
+        #expect(e.statusLine() != snoozeLine)
 
         // It ends on its own: the next poll after it runs out clears it.
         sys.advance(1800)
@@ -138,7 +141,8 @@ import MickCore
         e.pause()
         #expect(e.isPaused)
         #expect(e.icon == .paused)
-        #expect(e.noticeLine == "Fine. Go soft.")
+        #expect(e.state.rotation.usedLineIDs["pause"]?.count == 1)
+        #expect(e.announcement != nil && e.statusLine() == e.announcement?.text)
         #expect(e.state.sittingSince == sitting)
         try await send(temp, e, "prompt", "A", at: sys.now)
         #expect(e.reminder.phase == .idle)
@@ -151,11 +155,12 @@ import MickCore
         #expect(again.isPaused)
         #expect(again.icon == .paused)
         #expect(again.state.sittingSince == sitting)
-        #expect(again.noticeLine == nil)  // in memory only
+        #expect(again.announcement == nil)  // in memory only
 
         again.resume()
         #expect(!again.isPaused)
-        #expect(again.noticeLine == "About time.")
+        #expect(again.state.rotation.usedLineIDs["resume"]?.count == 1)
+        #expect(again.announcement != nil && again.statusLine() == again.announcement?.text)
         #expect(again.state.sittingSince == sitting)
         #expect(!saved(temp).paused)
         #expect(again.icon == .armed)
@@ -167,11 +172,12 @@ import MickCore
         let e = try start(temp, sys)
         defer { e.stop() }
         e.resume()
-        #expect(e.noticeLine == nil)
+        #expect(e.announcement == nil)
         e.snooze(.twoHours)
         e.resume()
         #expect(e.state.snoozedUntil == nil)
-        #expect(e.noticeLine == "About time.")
+        #expect(e.state.rotation.usedLineIDs["resume"]?.count == 1)
+        #expect(e.announcement != nil && e.statusLine() == e.announcement?.text)
     }
 
     @Test func pausingDuringTheShowDelayDropsTheCheck() async throws {
