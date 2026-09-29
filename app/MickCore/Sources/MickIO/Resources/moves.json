@@ -1,0 +1,13 @@
+[
+  { "id": "back-bend", "title": "Back bend", "instruction": "Hands on your lower back, lean back gently. Hold 20s.", "area": "back", "seconds": 20 },
+  { "id": "forward-fold", "title": "Forward fold", "instruction": "Knees soft, let your upper body hang toward the floor. Hold 30s.", "area": "back", "seconds": 30 },
+  { "id": "standing-twist", "title": "Standing twist", "instruction": "Feet hip-width, arms loose, turn your torso slowly side to side. 10 each way.", "area": "back", "seconds": 30 },
+  { "id": "hip-flexor-stretch", "title": "Hip flexor stretch", "instruction": "Step one foot back, bend the front knee slightly, tuck the hips. 20s each side.", "area": "hips", "seconds": 40 },
+  { "id": "calf-raises", "title": "Calf raises", "instruction": "Rise onto your toes, lower slowly. 15 times.", "area": "legs", "seconds": 30 },
+  { "id": "neck-side-stretch", "title": "Neck side stretch", "instruction": "Drop one ear toward your shoulder, relax. 15s each side.", "area": "neck", "seconds": 30 },
+  { "id": "chin-tucks", "title": "Chin tucks", "instruction": "Stand tall, pull your chin straight back, hold 3s. 8 times.", "area": "neck", "seconds": 30 },
+  { "id": "shoulder-rolls", "title": "Shoulder rolls", "instruction": "Roll your shoulders backward slowly. 10 times.", "area": "shoulders", "seconds": 20 },
+  { "id": "chest-opener", "title": "Chest opener", "instruction": "Clasp your hands behind your back, lift slightly, open the chest. Hold 20s.", "area": "chest", "seconds": 20 },
+  { "id": "wrist-stretch", "title": "Wrist stretch", "instruction": "Arm out, palm up, gently pull your fingers back with the other hand. 15s each side.", "area": "wrists", "seconds": 30 },
+  { "id": "walk", "title": "Walk", "instruction": "Walk to the kitchen and back. Refill your water.", "area": "walk", "seconds": 120 }
+]

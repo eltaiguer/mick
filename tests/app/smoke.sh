@@ -52,6 +52,8 @@ echo "== bundle"
 codesign --verify --strict "$APP" 2>/dev/null && ok "app is code signed" || fail "codesign --verify failed"
 codesign -dv "$APP" 2>&1 | grep -q 'runtime' && ok "hardened runtime" || fail "hardened runtime flag missing"
 codesign -d --entitlements - "$APP" 2>/dev/null | grep -q 'app-sandbox' && fail "app is sandboxed" || ok "not sandboxed"
+MOVES=$(find "$APP/Contents/Resources" -name moves.json -path '*MickIO*' 2>/dev/null | head -1)
+[ -n "$MOVES" ] && [ "$(/usr/bin/jq length "$MOVES")" = 11 ] && ok "moves.json bundled with 11 moves" || fail "moves.json missing from the bundle"
 
 # --- 1. First launch, then a real hook event --------------------------------
 echo "== first launch"
@@ -145,6 +147,23 @@ done
 grep -q 'reminder shown for session smoke-reminder' "$WORK/reminder-show-stop/log.txt" && grep -q 'reminder closed (agentStopped)' "$WORK/reminder-show-stop/log.txt" \
   && ok "log.txt records the show and the close" || fail "reminder show/close not logged"
 grep -q 'reminder shown' "$WORK/reminder-short-run/log.txt" && fail "short run showed a reminder" || ok "short run: no reminder in log.txt"
+/usr/bin/jq -e '(.rotation.used_move_ids | length) == 2 and (.rotation.last_areas | length) == 2 and .rotation.last_areas[0] != .rotation.last_areas[1]' \
+  "$WORK/reminder-show-stop/state.json" >/dev/null && ok "rotation saved to state.json" || fail "rotation not saved" "$(/usr/bin/jq -c .rotation "$WORK/reminder-show-stop/state.json")"
+
+# --- 5b. Routines (#8): a long sit (2x threshold) gets Stand up + Walk + 1 move,
+# and a relaunch on the same home keeps the rotation.
+echo "== routines"
+H="$WORK/reminder-long-sit"; sit_state "$H" -100M -1M
+printf '{"sit_threshold_minutes":50,"show_delay_seconds":2}\n' >"$H/config.json"
+run_smoke "$H" "$WORK/long-sit.out" --smoke-hook "$HOOK" --smoke-reminder show-stop --smoke-idle 10
+status=$?
+[ $status -eq 0 ] && grep -q '^SMOKE OK' "$WORK/long-sit.out" && grep -q 'routine (long sit): stand, walk, ' "$H/log.txt" \
+  && /usr/bin/jq -e '.rotation.last_areas[0] == "walk"' "$H/state.json" >/dev/null \
+  && ok "long sit: Stand up + Walk + 1 move" || fail "long sit routine (exit $status)" "$(grep 'routine' "$H/log.txt")"
+FIRST=$(/usr/bin/jq -c '.rotation.used_move_ids' "$H/state.json")
+run_smoke "$H" "$WORK/long-sit-2.out" --smoke-hook "$HOOK" --smoke-reminder show-stop --smoke-idle 10
+/usr/bin/jq -e --argjson first "$FIRST" '(.rotation.used_move_ids | length) == 3 and .rotation.used_move_ids[0:2] == $first' "$H/state.json" >/dev/null \
+  && ok "rotation kept across relaunch" || fail "rotation after relaunch" "before $FIRST, after $(/usr/bin/jq -c .rotation "$H/state.json")"
 
 # --- 6. Refuses to run --smoke without MICK_HOME ----------------------------
 echo "== guard"

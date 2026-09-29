@@ -194,7 +194,14 @@ final class SmokeCheck {
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
         }
         let content = controller.model.content
-        check(!content.opener.isEmpty && content.items.map(\.title) == ["Stand up", "Back bend", "Shoulder rolls"], "opener and Stand up + 2 moves")
+        let engine = delegate.engine!
+        check(engine.moves?.moves.count == 11, "bundled moves.json loaded (11 moves)")
+        let moves = content.items.dropFirst().compactMap { engine.moves?.move(id: $0.id) }
+        let isRoutine = content.items.first?.id == Routine.standUp.id && content.items.count == 3 && moves.count == 2
+            && (moves[0].id == Routine.walkID || moves[0].area != moves[1].area)
+        check(!content.opener.isEmpty && isRoutine, "opener and a routine: Stand up + 2 moves from different areas (\(content.items.map(\.id)))")
+        let saved = engine.state.rotation
+        check(saved.lastAreas == moves.map(\.area) && moves.allSatisfy { saved.usedMoveIDs.contains($0.id) }, "rotation recorded (\(saved.usedMoveIDs))")
     }
 
     private func seconds(_ d: Duration) -> String {

@@ -9,11 +9,15 @@
     offset and rotation decisions, the hooks warning state, the sitting timer and icon
     state (`SittingTimer`, `MenuBarIcon`), the reminder lifecycle (`Reminder`: trigger
     decisions, check hand-off, show-time input-gap wait, panel lifetime and the settle
-    window, as a pure value with explicit deadlines), panel placement
-    (`PanelPlacement`), and the `state.json` and `config.json` models.
+    window, as a pure value with explicit deadlines), routine composition (`Routine`:
+    Stand up + 2 moves, or Stand up + Walk + 1 move for a long sit, with the rotation
+    and area rules of §10.1), panel placement (`PanelPlacement`), and the `state.json`
+    and `config.json` models.
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
-    tailer, the App Nap activity (`ActivityAssertion`), and `MickEngine`, the one
+    tailer, the App Nap activity (`ActivityAssertion`), the bundled move catalogue
+    (`Sources/MickIO/Resources/moves.json`, a package resource so the app and
+    `swift test` read the same file), and `MickEngine`, the one
     object that owns state, feeds live events to the reminder, runs its one-shot timer
     and that the app observes.
 - `Mick/ReminderPanel.swift`: the production reminder panel from the panel spike (#1):

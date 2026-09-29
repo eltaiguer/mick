@@ -14,8 +14,9 @@ public struct RoutineItem: Equatable, Sendable, Identifiable {
     }
 }
 
-/// What the panel shows. Fixed for now: routine variety (#8) and Mick's full voice
-/// (#9) replace `standard`.
+/// What the panel shows. The engine fills `items` with a composed routine
+/// (`Routine`, §10.1); `standard` is the fallback when no move catalogue loaded.
+/// Mick's full voice (#9) replaces the opener and done line.
 public struct ReminderContent: Equatable, Sendable {
     public var opener: String
     public var items: [RoutineItem]
