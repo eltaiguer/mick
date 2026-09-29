@@ -6,7 +6,7 @@ import MickCore
 @MainActor
 @Suite(.serialized) struct MickEngineTests {
     private func engine(_ temp: TempHome, log: MemoryLog = MemoryLog(), tunables: MickEngine.Tunables = .init()) -> MickEngine {
-        MickEngine(home: temp.home, log: log, tunables: tunables)
+        MickEngine(home: temp.home, log: log, tunables: tunables, idleSeconds: { 0 })
     }
 
     @Test func firstLaunchCreatesHomeAndWritesDefaults() throws {

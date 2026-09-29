@@ -6,7 +6,8 @@
 - `MickCore/`: a Swift package with two libraries.
   - `MickCore`: pure logic and data types. No file system and no clock (everything
     takes `now`): event parsing, ordering, backlog, session bookkeeping, events-file
-    offset and rotation decisions, the hooks warning state, and the `state.json` and
+    offset and rotation decisions, the hooks warning state, the sitting timer and icon
+    state (`SittingTimer`, `MenuBarIcon`), and the `state.json` and
     `config.json` models.
   - `MickIO`: the Foundation layer around it. Mick's home directory, loading files with
     defaults and moving corrupted ones aside, the rotating `log.txt`, the `events.jsonl`
@@ -42,3 +43,5 @@ tests/hooks/test-hooks.sh         # the plugin's hook script
 checks the accessory policy, status item, menu, files and onboarding, then (with
 `--smoke-hook`) fires a real hook event and checks that the warning clears and onboarding
 shows its check mark within 2 s. It refuses to run without `MICK_HOME`.
+`--smoke-idle SECONDS` (smoke only) replaces the real idle reading with a fixed one, so
+the sitting-timer scenarios in `smoke.sh` don't depend on whether someone is at the Mac.

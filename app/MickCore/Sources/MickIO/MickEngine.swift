@@ -13,12 +13,15 @@ public final class MickEngine {
         public var drainDelay: TimeInterval = EventFilePolicy.drainDelay
         /// Prune, re-check the hooks status and poke the tailer this often.
         public var tickInterval: TimeInterval = 60
+        /// Poll system idle time this often (§6.3).
+        public var pollInterval: TimeInterval = SittingTimer.pollInterval
         public init() {}
     }
 
     public let home: MickHome
     @ObservationIgnored public let log: any MickLogger
     @ObservationIgnored private let clock: @Sendable () -> Date
+    @ObservationIgnored private let idleSeconds: @MainActor () -> Double
     @ObservationIgnored private let tunables: Tunables
 
     public private(set) var config: MickConfig = .defaults
@@ -36,12 +39,22 @@ public final class MickEngine {
 
     @ObservationIgnored private var tailer: EventTailer?
     @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var pollTimer: Timer?
+    /// When `willSleep` / `sessionDidResignActive` arrived. In memory only.
+    @ObservationIgnored private var sleptAt: Date?
+    @ObservationIgnored private var resignedAt: Date?
+    @ObservationIgnored private var lastReset: SittingTimer.Reset?
 
-    public init(home: MickHome, log: any MickLogger, tunables: Tunables = Tunables(), clock: @escaping @Sendable () -> Date = { Date() }) {
+    /// - Parameter idleSeconds: seconds since the last keyboard or mouse input
+    ///   (`SystemIdle.seconds` in the app; a fake in tests).
+    public init(home: MickHome, log: any MickLogger, tunables: Tunables = Tunables(),
+                clock: @escaping @Sendable () -> Date = { Date() },
+                idleSeconds: @escaping @MainActor () -> Double = { SystemIdle.seconds() }) {
         self.home = home
         self.log = log
         self.tunables = tunables
         self.clock = clock
+        self.idleSeconds = idleSeconds
         self.state = .defaults(now: clock())
     }
 
@@ -65,6 +78,10 @@ public final class MickEngine {
         let (loadedState, sOutcome) = JSONFileStore.load(MickState.self, from: home.state, defaults: .defaults(now: now), now: now, log: log)
         state = loadedState
         stateOutcome = sOutcome
+        // Quitting for the break-reset time counts as a break (decision 17). Only the
+        // loaded file's last_active_at counts; defaults use now, so they never reset.
+        if let reset = SittingTimer.apply(.launch, config: config, now: now, to: &state) { logReset(reset) }
+        pollIdle(now: now, save: false)
         let pruned = SessionBook.prune(&state, now: now)
         if !pruned.isEmpty { log.log("pruned \(pruned.count) session(s) with no event for 2 hours") }
         refreshHooks(now: now)
@@ -87,12 +104,22 @@ public final class MickEngine {
         timer.tolerance = min(10, tunables.tickInterval / 4)
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+
+        // A repeating Timer, not asyncAfter, which runs late by ~5 % (signals spike).
+        let pollTimer = Timer(timeInterval: tunables.pollInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.poll() }
+        }
+        pollTimer.tolerance = min(3, tunables.pollInterval / 10)
+        RunLoop.main.add(pollTimer, forMode: .common)
+        self.pollTimer = pollTimer
         isRunning = true
     }
 
     public func stop() {
         timer?.invalidate()
         timer = nil
+        pollTimer?.invalidate()
+        pollTimer = nil
         tailer?.stop()
         tailer = nil
         if isRunning { saveState() }
@@ -106,6 +133,78 @@ public final class MickEngine {
         if !SessionBook.prune(&state, now: now).isEmpty { saveState() }
         refreshHooks(now: now)
         tailer?.poke()
+    }
+
+    // MARK: - Sitting timer
+
+    /// Reads system idle time, records last-active and applies the break rule (§6.3).
+    /// Runs every `pollInterval`; public so tests and the app can poll on demand.
+    public func poll() {
+        pollIdle(now: clock(), save: true)
+    }
+
+    private func pollIdle(now: Date, save: Bool) {
+        if let reset = SittingTimer.apply(.poll(idleSeconds: idleSeconds()), config: config, now: now, to: &state) {
+            logReset(reset)
+        } else {
+            lastReset = nil
+        }
+        if save { saveState() }
+    }
+
+    /// `NSWorkspace.willSleep`.
+    public func willSleep() {
+        let now = clock()
+        sleptAt = now
+        pollIdle(now: now, save: true)
+    }
+
+    /// `NSWorkspace.didWake`: sleeping for the break-reset time counts as a break.
+    public func didWake() {
+        let now = clock()
+        if let reset = SittingTimer.apply(.wake(sleptAt: sleptAt), config: config, now: now, to: &state) { logReset(reset) }
+        sleptAt = nil
+        saveState()
+    }
+
+    /// `NSWorkspace.sessionDidResignActive` (fast user switching away).
+    public func sessionDidResignActive() {
+        let now = clock()
+        resignedAt = now
+        pollIdle(now: now, save: true)
+    }
+
+    /// `NSWorkspace.sessionDidBecomeActive`: away for the break-reset time counts as a break.
+    public func sessionDidBecomeActive() {
+        let now = clock()
+        if let reset = SittingTimer.apply(.sessionBecameActive(resignedAt: resignedAt), config: config, now: now, to: &state) {
+            logReset(reset)
+        }
+        resignedAt = nil
+        saveState()
+    }
+
+    /// The icon for the current state (§6.4).
+    public var icon: MenuBarIcon {
+        MenuBarIcon.current(hooks: hooks, state: state, config: config, now: clock())
+    }
+
+    /// The dropdown's plain detail line (§6.4).
+    public var sittingDetail: String {
+        SittingTimer.detailLine(state, config: config, now: clock())
+    }
+
+    private func logReset(_ reset: SittingTimer.Reset) {
+        let why = switch reset {
+        case .idle(let s): "idle \(Int(s))s"
+        case .relaunch(let s): "away \(Int(s))s before launch"
+        case .sleep(let s): "slept \(Int(s))s"
+        case .userSwitch(let s): "switched away \(Int(s))s"
+        }
+        // Idle resets repeat every poll during a break; log only the first of a run.
+        if case .idle = reset, case .idle? = lastReset { return }
+        lastReset = reset
+        log.log("sitting timer reset (\(why))")
     }
 
     /// Blocks until the tailer has processed everything queued so far (tests). Batches

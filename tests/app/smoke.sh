@@ -95,7 +95,41 @@ grep -q 'config.json corrupted' "$HOME3/log.txt" && grep -q 'state.json corrupte
   && ok "corruption logged" || fail "corruption not logged"
 [ "$(grep -c 'skipped malformed event line' "$HOME3/log.txt")" = 2 ] && ok "both malformed lines skipped and logged" || fail "malformed lines not logged"
 
-# --- 4. Refuses to run --smoke without MICK_HOME ----------------------------
+# --- 4. Sitting timer and icon states (#5) -----------------------------------
+# --smoke-idle fixes the idle reading, so these don't depend on someone using the Mac.
+echo "== sitting timer"
+iso() { date -u -v"$1" +%Y-%m-%dT%H:%M:%SZ; }
+# $1 = dir, $2 = sitting_since offset, $3 = last_active_at offset
+sit_state() {
+  mkdir -m 700 -p "$1"
+  printf '{"sitting_since":"%s","last_active_at":"%s","last_event_at":"%s"}\n' "$(iso "$2")" "$(iso "$3")" "$(iso -1M)" >"$1/state.json"
+}
+sitting_since_of() { /usr/bin/jq -r .sitting_since "$1/state.json"; }
+
+HOME4="$WORK/sit-armed"; sit_state "$HOME4" -60M -1M
+run_smoke "$HOME4" "$WORK/armed.out" --smoke-idle 0
+[ $? -eq 0 ] && grep -q 'icon=armed ' "$WORK/armed.out" && grep -q 'detail=Sitting 1h · reminder armed' "$WORK/armed.out" \
+  && ok "60 min sitting: armed icon and detail line" || fail "armed state" "$(grep -E 'INFO icon|FAIL' "$WORK/armed.out")"
+
+HOME5="$WORK/sit-glaring"; sit_state "$HOME5" -110M -1M
+run_smoke "$HOME5" "$WORK/glaring.out" --smoke-idle 0
+[ $? -eq 0 ] && grep -q 'icon=glaring ' "$WORK/glaring.out" && ok "110 min sitting: glaring icon" \
+  || fail "glaring state" "$(grep -E 'INFO icon|FAIL' "$WORK/glaring.out")"
+/usr/bin/jq -e '(.sitting_since | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) < (now - 6500)' "$HOME5/state.json" >/dev/null \
+  && ok "sitting_since kept across relaunch" || fail "sitting_since changed: $(sitting_since_of "$HOME5")"
+
+HOME6="$WORK/sit-relaunch"; sit_state "$HOME6" -110M -10M
+run_smoke "$HOME6" "$WORK/relaunch-reset.out" --smoke-idle 0
+[ $? -eq 0 ] && grep -q 'icon=calm ' "$WORK/relaunch-reset.out" && grep -q 'detail=Sitting 0m · reminder at 50m' "$WORK/relaunch-reset.out" \
+  && ok "away 10 min before launch: sitting time reset" || fail "relaunch reset" "$(grep -E 'INFO icon|FAIL' "$WORK/relaunch-reset.out")"
+grep -q 'sitting timer reset (away' "$HOME6/log.txt" && ok "relaunch reset logged" || fail "relaunch reset not logged"
+
+HOME7="$WORK/sit-idle"; sit_state "$HOME7" -110M -1M
+run_smoke "$HOME7" "$WORK/idle.out" --smoke-idle 600
+[ $? -eq 0 ] && grep -q 'icon=calm ' "$WORK/idle.out" && ok "idle 10 min: sitting time reset" \
+  || fail "idle reset" "$(grep -E 'INFO icon|FAIL' "$WORK/idle.out")"
+
+# --- 5. Refuses to run --smoke without MICK_HOME ----------------------------
 echo "== guard"
 env -u MICK_HOME HOME="$WORK/fakehome" "$BIN" --smoke >/dev/null 2>&1
 [ $? -eq 2 ] && [ ! -e "$WORK/fakehome/.mick" ] && ok "--smoke refuses to run without MICK_HOME" || fail "--smoke ran without MICK_HOME"
