@@ -140,7 +140,10 @@ run_smoke "$HOME7" "$WORK/idle.out" --smoke-idle 600
 echo "== reminder"
 for scenario in show-stop short-run tick-stays; do
   H="$WORK/reminder-$scenario"; sit_state "$H" -60M -1M
-  printf '{"sit_threshold_minutes":50,"show_delay_seconds":2}\n' >"$H/config.json"
+  # show-stop and short-run have the bell on (#11): it rings for the panel, and never
+  # for a run with no panel. tick-stays leaves it off (the default).
+  SOUND=false; [ "$scenario" != tick-stays ] && SOUND=true
+  printf '{"sit_threshold_minutes":50,"show_delay_seconds":2,"sound":%s}\n' "$SOUND" >"$H/config.json"
   run_smoke "$H" "$WORK/reminder-$scenario.out" --smoke-hook "$HOOK" --smoke-reminder "$scenario" --smoke-idle 10
   status=$?
   sed 's/^/     | /' "$WORK/reminder-$scenario.out"
@@ -150,6 +153,9 @@ done
 grep -q 'reminder shown for session smoke-reminder' "$WORK/reminder-show-stop/log.txt" && grep -q 'reminder closed (agentStopped)' "$WORK/reminder-show-stop/log.txt" \
   && ok "log.txt records the show and the close" || fail "reminder show/close not logged"
 grep -q 'reminder shown' "$WORK/reminder-short-run/log.txt" && fail "short run showed a reminder" || ok "short run: no reminder in log.txt"
+[ "$(grep -c ' bell$' "$WORK/reminder-show-stop/log.txt")" = 1 ] && ok "bell on: rang once for the panel" || fail "bell didn't ring once with sound on"
+grep -q ' bell$' "$WORK/reminder-short-run/log.txt" && fail "bell rang with no panel" || ok "bell on, no panel: no bell"
+grep -q ' bell$' "$WORK/reminder-tick-stays/log.txt" && fail "bell rang with sound off" || ok "bell off (default): no bell"
 /usr/bin/jq -e '(.rotation.used_move_ids | length) == 2 and (.rotation.last_areas | length) == 2 and .rotation.last_areas[0] != .rotation.last_areas[1]' \
   "$WORK/reminder-show-stop/state.json" >/dev/null && ok "rotation saved to state.json" || fail "rotation not saved" "$(/usr/bin/jq -c .rotation "$WORK/reminder-show-stop/state.json")"
 
@@ -202,6 +208,32 @@ printf '{"quiet_hours":{"start":"%s","end":"%s"}}\n' "$NEXT" "$START" >"$H/confi
 run_smoke "$H" "$WORK/controls-quiet.out" --smoke-idle 0
 [ $? -eq 0 ] && grep -q 'icon=paused ' "$WORK/controls-quiet.out" && ok "inside quiet hours (across midnight): paused icon" \
   || fail "quiet hours icon" "$(grep -E 'INFO icon|FAIL' "$WORK/controls-quiet.out")"
+
+# --- 5d. Settings and uninstall (#11) ----------------------------------------
+echo "== settings"
+H="$WORK/settings/mick-home"; mkdir -p "$WORK/settings"
+run_smoke "$H" "$WORK/settings.out" --smoke-settings settings --smoke-idle 0
+status=$?
+sed 's/^/     | /' "$WORK/settings.out"
+[ $status -eq 0 ] && grep -q '^SMOKE OK' "$WORK/settings.out" && ok "settings scenario passed" \
+  || fail "settings scenario (exit $status)" "$(tail -5 "$WORK/settings.out.stderr")"
+/usr/bin/jq -e '.sound == true and .sit_threshold_minutes == 0' "$H/config.json" >/dev/null \
+  && ok "hand-edited config.json left as written (Mick doesn't overwrite it)" || fail "config.json rewritten" "$(cat "$H/config.json")"
+grep -q 'simulated, never registered' "$H/log.txt" && ok "login item simulated under MICK_HOME" || fail "login item not simulated"
+
+echo "== uninstall"
+H="$WORK/uninstall/mick-home"; mkdir -p "$WORK/uninstall"
+run_smoke "$H" "$WORK/uninstall.out" --smoke-settings uninstall --smoke-hook "$HOOK" --smoke-idle 0
+status=$?
+sed 's/^/     | /' "$WORK/uninstall.out"
+[ $status -eq 0 ] && grep -q '^SMOKE OK' "$WORK/uninstall.out" && ok "uninstall scenario passed and Mick quit" \
+  || fail "uninstall scenario (exit $status)" "$(tail -5 "$WORK/uninstall.out.stderr")"
+[ ! -e "$H" ] && ok "MICK_HOME gone after uninstall and quit" || fail "MICK_HOME still there: $(ls -A "$H")"
+for kind in prompt stop wait end; do
+  printf '{"session_id":"left-over","cwd":"/tmp","prompt":"SMOKE-SECRET"}' | MICK_HOME="$H" "$HOOK" "$kind"
+done
+[ ! -e "$H" ] && ok "still-installed plugin writes nothing and creates nothing" || fail "hooks recreated MICK_HOME"
+[ -z "$(ls -A "$WORK/uninstall")" ] && ok "nothing else left next to it" || fail "left behind: $(ls -A "$WORK/uninstall")"
 
 # --- 6. Refuses to run --smoke without MICK_HOME ----------------------------
 echo "== guard"

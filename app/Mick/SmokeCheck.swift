@@ -1,6 +1,7 @@
 import AppKit
 import MickCore
 import MickIO
+import ServiceManagement
 
 /// `--smoke`: an unattended end-to-end check of the shell, run inside the real app
 /// against a temporary `MICK_HOME` (tests/app/smoke.sh drives it). Prints one
@@ -32,6 +33,9 @@ final class SmokeCheck {
         check(statusItem.item.button?.image != nil, "status item has an icon")
         check(statusItem.item.menu != nil, "status item has its own menu")
         check(statusItem.item.menu?.items.last?.title == "Quit Mick", "menu ends with Quit Mick")
+        let items = statusItem.item.menu?.items ?? []
+        check(items.count >= 2 && items[items.count - 2].title == StatusItemController.settingsTitle, "Settings… right above Quit Mick")
+        check(delegate.bell.isLoaded, "the bell sound loads")
 
         // Home directory and files.
         let mode = (try? FileManager.default.attributesOfItem(atPath: home.url.path))?[.posixPermissions] as? Int
@@ -57,6 +61,18 @@ final class SmokeCheck {
         let savedState = JSONFileStore.load(MickState.self, from: home.state, defaults: .defaults(now: .distantPast), now: Date(), log: MemoryLog()).value
         check(abs(savedState.lastActiveAt.timeIntervalSince(engine.state.lastActiveAt)) < 0.001, "last_active_at written to state.json")
         print("INFO icon=\(statusItem.icon.map(\.rawValue) ?? "none") detail=\(statusItem.detailLine ?? "none") sitting_since=\(MickDate.string(from: engine.state.sittingSince))")
+
+        switch delegate.options.smokeSettings {
+        case .settings?:
+            await runSettings()
+            finish()
+            return
+        case .uninstall?:
+            await runUninstall()
+            return  // quits through the uninstalled window, like the real thing
+        case nil:
+            break
+        }
 
         guard let hook = delegate.options.smokeHook else {
             finish()
@@ -371,6 +387,138 @@ final class SmokeCheck {
         check(!content.opener.isEmpty && isRoutine,"opener and a routine: Stand up + 2 moves from different areas (\(content.items.map(\.id)))")
         let saved = engine.state.rotation
         check(saved.lastAreas == moves.map(\.area) && moves.allSatisfy { saved.usedMoveIDs.contains($0.id) }, "rotation recorded (\(saved.usedMoveIDs))")
+        // The bell (§6.5): rings once as the panel appears, only when it's on.
+        let expected = engine.config.sound ? 1 : 0
+        check(engine.bellCount == expected && delegate.bell.playCount == expected,
+              "bell \(engine.config.sound ? "on: rang once" : "off: silent") (rang \(delegate.bell.playCount))")
+    }
+
+    // MARK: - Settings and uninstall (#11)
+
+    private var recordingLoginItem: RecordingLoginItem? { delegate.loginItem.service as? RecordingLoginItem }
+
+    private func openSettings() async {
+        guard let item = statusItem().menuItem(StatusItemController.settingsTitle) else {
+            check(false, "menu has Settings…")
+            return
+        }
+        check(statusItem().choose(item), "chose Settings…")
+        await waitFor(.seconds(1)) { self.delegate.settings.isVisible }
+        check(delegate.settings.isVisible, "Settings window shown")
+        let size = delegate.settings.window?.contentView?.fittingSize ?? .zero
+        check(size.width > 300 && size.height > 200, "Settings window has content (\(Int(size.width))×\(Int(size.height)))")
+        try? await Task.sleep(for: .milliseconds(300))
+        snapshot(delegate.settings.window?.contentView, env: "MICK_SMOKE_SETTINGS_SNAPSHOT")
+    }
+
+    private func savedConfig() -> ConfigFile.Parsed {
+        guard let data = try? Data(contentsOf: engine().home.config) else { return .unreadable("missing") }
+        return ConfigFile.parse(data)
+    }
+
+    private func runSettings() async {
+        let engine = engine()
+        let home = engine.home
+        let login = delegate.loginItem!
+        check(recordingLoginItem != nil, "login item simulated under MICK_HOME (never the real one)")
+        check(engine.createdHome && recordingLoginItem?.registerCalls == 1 && login.isOn, "open at login turned on by default on first launch")
+
+        await openSettings()
+        check(!NSApp.isActive, "opening Settings in the smoke check didn't take focus")
+
+        // Changes from the window are written to config.json.
+        let editor = SettingsEditor(engine: engine)
+        editor.set(\.sitThresholdMinutes, 42)
+        editor.set(\.sound, true)
+        editor.setQuietHours(true)
+        let expected = MickConfig(sitThresholdMinutes: 42, quietHours: .suggested, sound: true)
+        check(engine.config == expected, "settings applied (\(engine.config))")
+        check(savedConfig() == .config(expected, problems: []), "settings written to config.json")
+        editor.binding(\.showDelaySeconds, in: MickConfig.showDelayRange).wrappedValue = 99_999
+        check(engine.config.showDelaySeconds == MickConfig.showDelayRange.upperBound, "typed values are kept inside their range")
+        editor.setQuietHours(false)
+        check(engine.config.quietHours == nil, "quiet hours off")
+
+        // Hand edits are picked up without a relaunch.
+        let edited = #"{"sit_threshold_minutes": 12, "show_delay_seconds": 4}"#
+        try? Data(edited.utf8).write(to: home.config, options: .atomic)
+        await waitFor(.seconds(2)) { engine.config == MickConfig(sitThresholdMinutes: 12, showDelaySeconds: 4) }
+        check(engine.config == MickConfig(sitThresholdMinutes: 12, showDelaySeconds: 4), "hand edit to config.json picked up live (\(engine.config))")
+        await waitFor(.seconds(1)) { self.statusItem().detailLine?.contains("12m") == true }
+        check(statusItem().detailLine?.contains("12m") == true, "menu follows the hand edit (\(statusItem().detailLine ?? "none"))")
+
+        // Invalid values fall back to defaults and are logged.
+        try? Data(#"{"sit_threshold_minutes": 0, "show_delay_seconds": "soon", "sound": true}"#.utf8).write(to: home.config, options: .atomic)
+        await waitFor(.seconds(2)) { engine.config == MickConfig(sound: true) }
+        check(engine.config == MickConfig(sound: true), "invalid hand-edited values fall back to defaults")
+        let log = (try? String(contentsOf: home.log, encoding: .utf8)) ?? ""
+        check(log.contains("sit_threshold_minutes 0 is out of range") && log.contains("show_delay_seconds \"soon\""), "invalid values logged")
+
+        // Open at login: approval needed, then an error, both shown plainly.
+        recordingLoginItem?.statusAfterRegister = .requiresApproval
+        login.setEnabled(false)
+        check(!login.isOn && login.note == nil, "open at login off")
+        login.setEnabled(true)
+        check(login.isOn && login.note == LoginItemNote.requiresApproval && login.offersSystemSettings,
+              "requires approval: plain line pointing to Login Items (\(login.note ?? "none"))")
+        login.openSystemSettings()
+        check(recordingLoginItem?.openSettingsCalls == 1, "the line offers to open Login Items settings")
+        recordingLoginItem?.nextError = NSError(domain: "SMAppServiceErrorDomain", code: Int(kSMErrorLaunchDeniedByUser),
+                                                userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])
+        login.setEnabled(false)
+        check(login.errorMessage != nil && login.note == login.errorMessage, "a registration error is shown (\(login.errorMessage ?? "none"))")
+        let log2 = (try? String(contentsOf: home.log, encoding: .utf8)) ?? ""
+        check(log2.contains("open at login: Couldn't turn off"), "the error is logged")
+
+        // The bell's Play button.
+        let before = delegate.bell.playCount
+        delegate.bell.play()
+        check(delegate.bell.playCount == before + 1, "the bell plays on demand (muted in the smoke check)")
+        delegate.settings.close()
+        check(!delegate.settings.isVisible, "Settings window closes")
+    }
+
+    private func runUninstall() async {
+        let engine = engine()
+        let home = engine.home
+        await openSettings()
+        check(UninstallConfirmation.message(home: home).contains(home.url.path), "the confirmation names the folder it deletes")
+        check(recordingLoginItem?.status == .enabled, "login item registered before uninstall")
+
+        // What the confirmation's Uninstall button runs (the alert itself is modal).
+        delegate.uninstall(activate: false)
+        check(!FileManager.default.fileExists(atPath: home.url.path), "Mick's home directory deleted")
+        check(recordingLoginItem?.unregisterCalls == 1 && recordingLoginItem?.status == .notRegistered, "login item unregistered")
+        check(engine.isUninstalled && !engine.isRunning, "engine stopped")
+        check(!statusItem().isInMenuBar && !delegate.settings.isVisible, "status item removed and Settings closed")
+        let window = delegate.uninstalled
+        await waitFor(.seconds(1)) { window?.isVisible == true }
+        check(window?.isVisible == true && window?.result.removedHome == true, "the uninstalled window is shown")
+        check(UninstalledView.commands.first == "/plugin uninstall mick@mick", "it shows /plugin uninstall mick@mick (the install id's counterpart)")
+        let size = window?.window.contentView?.fittingSize ?? .zero
+        check(size.width > 300 && size.height > 200, "the uninstalled window has content (\(Int(size.width))×\(Int(size.height)))")
+        snapshot(window?.window.contentView, env: "MICK_SMOKE_UNINSTALL_SNAPSHOT")
+
+        // A still-installed plugin writes nothing and creates nothing.
+        if let hook = delegate.options.smokeHook {
+            check(runHook(path: hook, home: home, kind: "prompt", session: "after-uninstall") == 0, "hook exited 0 after uninstall")
+            check(!FileManager.default.fileExists(atPath: home.url.path), "the hook didn't recreate Mick's home")
+        }
+        try? await Task.sleep(for: .milliseconds(300))
+        check(!FileManager.default.fileExists(atPath: home.url.path), "nothing recreated Mick's home")
+
+        print(failures.isEmpty ? "SMOKE OK" : "SMOKE FAILED: \(failures.count)")
+        fflush(stdout)
+        guard failures.isEmpty, let window else { exit(1) }
+        window.quit()  // NSApp.terminate, as the Quit Mick button does
+    }
+
+    /// Optional picture of a window for a human to look at later (not a check).
+    private func snapshot(_ view: NSView?, env: String) {
+        guard let view, let path = ProcessInfo.processInfo.environment[env], !path.isEmpty,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 
     private func seconds(_ d: Duration) -> String {
