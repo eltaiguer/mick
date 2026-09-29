@@ -90,16 +90,6 @@ import MickCore
         #expect(s.snoozedUntil == nil)
     }
 
-    @Test func noticesExpire() {
-        let now = at(29, 14, 0)
-        let n = StatusNotice(text: StatusNotice.line(for: .pause), now: now)
-        #expect(n.text == "Fine. Go soft.")
-        #expect(n.isShowing(at: now.addingTimeInterval(StatusNotice.duration - 1)))
-        #expect(!n.isShowing(at: now.addingTimeInterval(StatusNotice.duration)))
-        #expect(StatusNotice.line(for: .resume) == "About time.")
-        #expect(StatusNotice.line(for: .snooze(.oneHour)) == "Sixty minutes. I'll be here.")
-    }
-
     // MARK: - Quiet hours
 
     @Test func quietHoursAcrossMidnight() {

@@ -70,9 +70,6 @@ public final class MickEngine {
     @ObservationIgnored public var onReminder: (([Reminder.Effect]) -> Void)?
     /// Called on the main actor after a reminder settles and its outcome is applied.
     @ObservationIgnored public var onSettled: ((Settlement) -> Void)?
-    /// A Mick line shown briefly in the dropdown's status line after snooze, pause or
-    /// resume (§6.4). In memory only.
-    public private(set) var notice: StatusNotice?
     /// The most recent settlement this launch (diagnostics and the smoke check).
     public private(set) var lastSettlement: Settlement?
     /// `reminders.jsonl`.
@@ -457,7 +454,6 @@ public final class MickEngine {
     /// `nextStatusLine()` is called.
     public func statusLine() -> String {
         let now = clock()
-        if let noticeLine { return noticeLine }
         if let announcement, now < announcement.until { return announcement.text }
         let pool = LinePool.status(for: icon)
         if statusPick?.pool != pool {
@@ -495,22 +491,21 @@ public final class MickEngine {
         let until = option.until(from: now)
         log.log("snoozed until \(MickDate.string(from: until)) (\(option.rawValue))")
         if reminder.panel != nil {
-            snoozeReminder(until: until)
+            snoozeReminder(until: until)  // announces the snooze line itself
         } else {
             Controls.snooze(&state, until: until)
             saveState()
+            announce(.snooze)
         }
-        show(notice: .snooze(option), now: now)
     }
 
     /// Pause until resumed; persists across relaunch. Never touches the sitting timer.
     public func pause() {
-        let now = clock()
         guard !state.paused else { return }
         Controls.pause(&state)
         saveState()
         log.log("paused")
-        show(notice: .pause, now: now)
+        announce(.pause)
     }
 
     /// Ends a pause and any snooze. Never touches the sitting timer.
@@ -520,21 +515,12 @@ public final class MickEngine {
         Controls.resume(&state)
         saveState()
         log.log("resumed")
-        show(notice: .resume, now: now)
+        announce(.resume)
     }
 
     public var isPaused: Bool { state.paused }
     public var isSnoozed: Bool { Controls.isSnoozed(state, now: clock()) }
 
-    /// The Mick line for the dropdown's status line while a notice is showing, else nil.
-    public var noticeLine: String? {
-        guard let notice, notice.isShowing(at: clock()) else { return nil }
-        return notice.text
-    }
-
-    private func show(notice action: StatusNotice.Action, now: Date) {
-        notice = StatusNotice(text: StatusNotice.line(for: action), now: now)
-    }
 
     /// "Stretch now" is enabled only while no reminder is scheduled, visible or
     /// settling (§6.4).
