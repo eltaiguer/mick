@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var statusItem: StatusItemController!
     private(set) var onboarding: OnboardingWindowController!
     private(set) var workspaceSignals: WorkspaceSignals!
+    private(set) var reminderPanel: ReminderPanelController!
 
     init(options: LaunchOptions) {
         self.options = options
@@ -46,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(engine: engine) { [weak self] in
             self?.onboarding.show(activate: true)
         }
+        reminderPanel = ReminderPanelController(engine: engine) { [weak self] in self?.statusItem.item.button }
 
         // First launch, or the hooks were never seen: explain how to set up. An
         // LSUIElement app isn't activated when opened from Finder, so bring onboarding
