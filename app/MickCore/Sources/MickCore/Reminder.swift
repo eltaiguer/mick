@@ -118,13 +118,22 @@ public struct Reminder: Equatable, Sendable {
         public var lastTickAt: Date?
         /// When the last item was ticked; the done line shows from here.
         public var allTickedAt: Date?
+        /// Whole minutes you'd been sitting when it appeared (for the reminder log).
+        public var sittingMinutes: Int
+        /// The longest continuous idle stretch seen since it appeared, from the idle
+        /// polls of the follow-up window (§8). Only time after `shownAt` counts.
+        public var maxIdleSeconds: Double = 0
 
-        public init(sessionID: String?, cwd: String? = nil, content: ReminderContent, shownAt: Date) {
+        public init(sessionID: String?, cwd: String? = nil, content: ReminderContent, shownAt: Date, sittingMinutes: Int = 0) {
             self.sessionID = sessionID
             self.cwd = cwd
             self.content = content
             self.shownAt = shownAt
+            self.sittingMinutes = sittingMinutes
         }
+
+        /// Shown from the menu (Stretch now, #10) rather than for an agent run.
+        public var isManual: Bool { sessionID == nil }
 
         public var isDone: Bool { allTickedAt != nil }
         public var tickedItemIDs: [String] {
@@ -137,8 +146,19 @@ public struct Reminder: Equatable, Sendable {
         public var panel: Panel
         public var closedAt: Date
         public var reason: CloseReason
-        /// `max(closedAt, shownAt + 3 min)`; `closedAt` for a snooze.
+        /// `max(closedAt, shownAt + 3 min)`; `closedAt` for a snooze. This is the
+        /// reminder's `settled_at` (§8, §12.3).
         public var until: Date
+
+        public init(panel: Panel, closedAt: Date, reason: CloseReason, until: Date) {
+            self.panel = panel
+            self.closedAt = closedAt
+            self.reason = reason
+            self.until = until
+        }
+
+        /// Whether the idle watch still runs: until the settle time, never for a snooze.
+        public var isWatchingIdle: Bool { reason != .snoozed }
     }
 
     public enum CloseReason: String, Equatable, Sendable {
@@ -154,6 +174,9 @@ public struct Reminder: Equatable, Sendable {
         case hardCap
         /// "Not now" (or closing the panel).
         case notNow
+        /// Snooze from the panel: settles at once as the Snoozed outcome, with no idle
+        /// watch (§8, decision 27).
+        case snoozed
     }
 
     /// Why a live prompt didn't schedule a check (§7).
@@ -191,7 +214,8 @@ public struct Reminder: Equatable, Sendable {
         /// Everything ticked: show the done line.
         case allTicked(Panel)
         case closed(Panel, CloseReason)
-        /// The settle window ended. Outcomes (#7) hook in here.
+        /// The settle window ended. `Outcome.judge` decides how it went and
+        /// `Outcome.apply` updates Mick's memory (§8).
         case settled(Settling)
     }
 
@@ -316,6 +340,7 @@ public struct Reminder: Equatable, Sendable {
         state: MickState, config: MickConfig, now: Date, idleSeconds: Double,
         content: ReminderContent = .standard, calendar: Calendar = .current
     ) -> [Effect] {
+        observeIdle(idleSeconds, now: now)
         var effects: [Effect] = []
         // Each step either changes the phase or leaves nothing due, so this ends.
         for _ in 0..<8 {
@@ -343,7 +368,8 @@ public struct Reminder: Equatable, Sendable {
                 return [.dropped(sessionID: c.sessionID, .blocked(b))]
             }
             if idleSeconds.isFinite, idleSeconds >= timings.inputGap {
-                let panel = Panel(sessionID: c.sessionID, cwd: session.cwd, content: content, shownAt: now)
+                let sitting = Int(SittingTimer.sittingSeconds(state, now: now) / 60)
+                let panel = Panel(sessionID: c.sessionID, cwd: session.cwd, content: content, shownAt: now, sittingMinutes: sitting)
                 phase = .visible(panel)
                 return [.show(panel)]
             }
@@ -386,6 +412,48 @@ public struct Reminder: Equatable, Sendable {
         return [.updated(p)]
     }
 
+    /// Snooze chosen from the panel: closes and settles immediately (§8). Setting
+    /// `snoozed_until` is the caller's job.
+    public mutating func snooze(now: Date) -> [Effect] {
+        guard case .visible(let p) = phase else { return [] }
+        return close(p, reason: .snoozed, now: now)
+    }
+
+    /// Records an idle reading (seconds since the last input) taken at `now`, for the
+    /// "did you get up" signal (§8). Only the part of that stretch between the panel
+    /// appearing and the settle time counts. Does nothing outside the follow-up window.
+    public mutating func observeIdle(_ idleSeconds: Double, now: Date) {
+        guard idleSeconds.isFinite, idleSeconds > 0 else { return }
+        func stretch(_ p: Panel, windowEnd: Date) -> Double {
+            let start = max(now.addingTimeInterval(-idleSeconds), p.shownAt)
+            return max(0, min(now, windowEnd).timeIntervalSince(start))
+        }
+        switch phase {
+        case .visible(var p):
+            let seen = stretch(p, windowEnd: now)
+            guard seen > p.maxIdleSeconds else { return }
+            p.maxIdleSeconds = seen
+            phase = .visible(p)
+        case .settling(var s) where s.isWatchingIdle:
+            let seen = stretch(s.panel, windowEnd: s.until)
+            guard seen > s.panel.maxIdleSeconds else { return }
+            s.panel.maxIdleSeconds = seen
+            phase = .settling(s)
+        default:
+            return
+        }
+    }
+
+    /// True from the panel appearing until it settles: the idle poll runs every 5 s
+    /// instead of 30 s (§6.3, §8).
+    public var isInFollowUp: Bool {
+        switch phase {
+        case .visible: true
+        case .settling(let s): s.isWatchingIdle
+        default: false
+        }
+    }
+
     /// "Not now", or closing the panel.
     public mutating func dismiss(now: Date) -> [Effect] {
         guard case .visible(let p) = phase else { return [] }
@@ -410,7 +478,7 @@ public struct Reminder: Equatable, Sendable {
     }
 
     private mutating func close(_ p: Panel, reason: CloseReason, now: Date) -> [Effect] {
-        let until = max(now, p.shownAt.addingTimeInterval(timings.settleAfterShown))
+        let until = reason == .snoozed ? now : max(now, p.shownAt.addingTimeInterval(timings.settleAfterShown))
         let s = Settling(panel: p, closedAt: now, reason: reason, until: until)
         phase = .settling(s)
         if until <= now {
