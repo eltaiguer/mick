@@ -49,7 +49,9 @@ struct UninstalledView: View {
                 Text(result.removedHome ? "Mick's packed up" : "Mick couldn't finish uninstalling").font(.title2.bold())
                 Text(result.removedHome
                      ? "Mick's folder is deleted and he won't open at login."
-                     : "Mick's folder at \(home.url.path) is still there. Delete it in Finder.")
+                     : result.problems.contains(where: { $0.hasPrefix("Refused") })
+                        ? "Nothing was deleted."
+                        : "Mick's folder at \(home.url.path) is still there. Delete it in Finder.")
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(result.problems, id: \.self) { problem in
                     Text(problem).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)

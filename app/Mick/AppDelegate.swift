@@ -67,12 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Open at login (§6.5). Only a real launch on the real home touches the system
-        // login item: with MICK_HOME set (tests, simulation, the smoke check) a login item
-        // would start Mick without MICK_HOME (§12), so those use an in-memory stand-in.
-        let usesSystemLoginItem = !options.smoke && (environment["MICK_HOME"] ?? "").isEmpty
+        // Open at login (§6.5). Only a real launch on the default home (~/.mick) touches
+        // the system login item: with any other home (MICK_HOME for tests, simulation,
+        // the smoke check) a login item would start Mick without it (§12), so those use
+        // an in-memory stand-in.
+        let usesSystemLoginItem = !options.smoke && home == MickHome.resolve(environment: [:])
         let loginService: any LoginItemService = usesSystemLoginItem ? SystemLoginItem() : RecordingLoginItem()
-        if !usesSystemLoginItem { log.log("MICK_HOME set: open at login is simulated, never registered with the system") }
+        if !usesSystemLoginItem { log.log("not the default home (or a smoke check): open at login is simulated, never registered with the system") }
         let loginItem = LoginItemController(service: loginService, log: log)
         self.loginItem = loginItem
         loginItem.applyDefault(firstLaunch: engine.createdHome)
