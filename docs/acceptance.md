@@ -20,7 +20,7 @@ How each one is verified:
 
 | # | Criterion | Verified by |
 |---|---|---|
-| 1 | The reminder panel never takes keyboard focus: typing continuously in Terminal while it appears loses no keystrokes. | **Manual** (focus test below). Smoke: panel can't become key or main, Mick has no key window, frontmost app unchanged on show, click, snooze and close. Spike: `spikes/panel/typing-check.sh`. |
+| 1 | The reminder panel never takes keyboard focus: typing continuously in Terminal while it appears loses no keystrokes. | **Manual** (focus test below). Smoke: panel can't become key or main, Mick has no key window, and Mick never becomes frontmost or active on show, click, snooze and close (another app coming forward on its own during the check is logged as INFO, not failed). Spike: `spikes/panel/typing-check.sh`. |
 | 2 | Panel checkboxes respond to the first click without activating Mick. | Smoke: "content takes the first click without key", `tick-stays` clicks a checkbox and checks the panel isn't key, Mick isn't active and the frontmost app is unchanged. **Manual** with Full Keyboard Access on. |
 | 3 | The panel appears over a fullscreen app. | **Manual** (fullscreen Space). Smoke checks what makes it work: `.statusBar` level, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, accessory policy. |
 | 4 | With the threshold set to 1 minute, a reminder appears on the next agent run lasting longer than the show delay. | Unit: `AcceptanceTests/ac04_oneMinuteThresholdShowsOnTheNextRunLongerThanTheDelay`, `ReminderTests/livePromptWhenArmedSchedulesACheckAfterTheShowDelay`. Simulation: `normal-run` (1-minute thresholds). Smoke: `show-stop`. |
