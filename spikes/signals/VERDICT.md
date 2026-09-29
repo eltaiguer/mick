@@ -8,20 +8,29 @@ Swift 6.2.3, Swift 6 language mode (strict concurrency).
 refinements and two open items:
 
 - *Refinement:* the typed `NSWorkspace` messages are delivered **synchronously on
-  the posting thread**. They don't hop to the main actor; an off-main post traps.
-  AppKit posts workspace notifications on the main thread, so this holds in
-  practice. Don't re-post these messages yourself from a background context.
-- *Refinement:* don't schedule the 30 s check (or any deadline Mick promises)
-  with `DispatchQueue.main.asyncAfter` or a default-tolerance timer.
-  libdispatch gives `asyncAfter` a leeway of about 10 % of the delay, capped
-  at 60 s: the spike's 33-minute `asyncAfter` fired **60.2 s late** in both
-  runs, while a `Timer` with the default zero tolerance was never more than
-  0.12 s late. For a 30 s check that's up to 3 s of slack. Use `Timer` (zero
-  tolerance) or a `DispatchSourceTimer` with an explicit small leeway.
+  the posting thread**. They don't hop to the main actor; an off-main post traps
+  (proven by an exit test). AppKit is expected to post workspace notifications
+  on the main thread, so this should hold in practice; the manual sleep/wake
+  check confirms it (a background post would crash the app). Never re-post
+  these messages yourself from a background context.
+- *Refinement:* don't schedule Mick's deadlines (the 30 s check, the 3-minute
+  untouched close, the 10-minute cap) with `DispatchQueue.main.asyncAfter`.
+  Measured on its own, it fires about 5 % of the delay late, capped at 60 s:
+
+  | delay | 30 s | 180 s | 600 s | 1980 s |
+  |---|---|---|---|---|
+  | `asyncAfter` late by | 1.5 s | 9.0 s | 29.9 s | 60.2 s (both App Nap runs) |
+
+  A one-shot `Timer` (default zero tolerance) was never more than 0.12 s late
+  over 67 fires, and a `DispatchSourceTimer` with an explicit 100 ms leeway
+  was 0.10 s late. Use one of those. `Task.sleep` wasn't isolated (in the
+  side-by-side run it coalesced with the other timers at +0.10 s), so measure
+  it before relying on it. Scripts: `scripts/asyncafter.swift`,
+  `scripts/leeway.swift`.
 - *Open (manual):* the "no permission prompt when launched from Finder" and
   "not listed under Input Monitoring / Accessibility" checks need a person.
   Everything automatable points the right way (below).
-- *Open (manual):* App Nap never actually engaged during the 34-minute run, with
+- *Open (manual):* no sign of App Nap engaging during the 34-minute run, with
   or without the activity (details in §3), so the run shows that the activity
   does no harm, not that it's needed. Keep it as the spec says (it's cheap and
   Apple's documented remedy); a person should repeat the run while away from
@@ -45,6 +54,8 @@ spikes/signals/
   Tests/SignalsKitTests/        `swift test`
   scripts/make-app.sh           wraps the binary in SignalsSpike.app, signs it (Apple Development)
   scripts/run-appnap.sh         the 30+ minute App Nap experiment
+  scripts/asyncafter.swift      asyncAfter lateness on its own
+  scripts/leeway.swift          Timer / DispatchSourceTimer / Task.sleep / asyncAfter side by side
   results/                      logs from the run recorded below
 ```
 
@@ -119,9 +130,11 @@ latency, and a sampler recorded each app's scheduling priority every minute.
 - With the activity held: the timer fired on time (max 0.12 s late) and every
   file write reached the callback within 16 ms, far inside the 2 s budget.
   `latencyCritical` is not used. **Criterion met.**
-- Without the activity: identical numbers, and the priority never dropped to
-  a background level, so **App Nap did not engage in this run** for either
-  process. Someone was using the Mac throughout (idle never exceeded 33 s),
+- Without the activity: identical numbers, and no sign of napping by the
+  proxy available: scheduling priority stayed at 46 in every sample instead of
+  dropping to a background level (Activity Monitor's App Nap column is the
+  authoritative signal, and needs a person). App Nap isn't disabled on this
+  Mac (`NSAppSleepDisabled` is unset globally and for the bundle). Someone was using the Mac throughout (idle never exceeded 33 s),
   and the apps were launched from a shell session, either of which may keep
   the system from napping. So this doesn't show the activity is unnecessary,
   only that it isn't needed while the user is active. The spec's reasoning for
@@ -141,7 +154,7 @@ latency, and a sampler recorded each app's scheduling priority every minute.
       use fast user switching into another account and back. The menu shows
       `willSleep`, `didWake`, `sessionDidResignActive`, `sessionDidBecomeActive`
       with times, and the app hasn't crashed.
-- [ ] Re-run `scripts/run-appnap.sh` while away from the Mac (display asleep
+- [ ] On a Mac with App Nap enabled, re-run `scripts/run-appnap.sh` while away from the Mac (display asleep
       or idle for 30+ min, not launched from a terminal session if possible)
       with Activity Monitor's App Nap column showing. Record whether
       `activity-off` naps and how late its timer and file-watch get.
