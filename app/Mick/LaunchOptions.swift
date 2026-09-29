@@ -9,15 +9,21 @@ struct LaunchOptions: Equatable {
     /// `--smoke-hook PATH`: the plugin's `mick-event.sh`, run by the smoke check to
     /// produce a real hook event.
     var smokeHook: String?
+    /// `--smoke-idle SECONDS`: with `--smoke`, report this fixed system idle time
+    /// instead of the real one, so sitting-timer checks don't depend on whether
+    /// someone is using the Mac.
+    var smokeIdle: Double?
 
     enum ParseError: Error, Equatable, CustomStringConvertible {
         case unknown(String)
         case missingValue(String)
+        case badValue(String)
 
         var description: String {
             switch self {
             case .unknown(let a): "unknown argument \(a)"
             case .missingValue(let a): "\(a) needs a value"
+            case .badValue(let a): "bad value for \(a)"
             }
         }
     }
@@ -33,6 +39,11 @@ struct LaunchOptions: Equatable {
             case "--smoke-hook":
                 guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
                 options.smokeHook = args[i + 1]
+                i += 1
+            case "--smoke-idle":
+                guard i + 1 < args.count else { throw ParseError.missingValue(arg) }
+                guard let seconds = Double(args[i + 1]), seconds.isFinite, seconds >= 0 else { throw ParseError.badValue(arg) }
+                options.smokeIdle = seconds
                 i += 1
             default:
                 // AppKit/Xcode pass things like `-NSDocumentRevisionsDebugMode YES`.

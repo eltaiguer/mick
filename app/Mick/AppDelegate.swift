@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var engine: MickEngine!
     private(set) var statusItem: StatusItemController!
     private(set) var onboarding: OnboardingWindowController!
+    private(set) var workspaceSignals: WorkspaceSignals!
 
     init(options: LaunchOptions) {
         self.options = options
@@ -26,7 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let home = MickHome.resolve(environment: environment)
         let log = RotatingLog(url: home.log, echoToStderr: options.smoke)
-        let engine = MickEngine(home: home, log: log)
+        let engine: MickEngine
+        if options.smoke, let idle = options.smokeIdle {
+            engine = MickEngine(home: home, log: log, idleSeconds: { idle })
+        } else {
+            engine = MickEngine(home: home, log: log)
+        }
         self.engine = engine
         do {
             try engine.start()
@@ -35,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        workspaceSignals = WorkspaceSignals(engine: engine)
         onboarding = OnboardingWindowController(engine: engine)
         statusItem = StatusItemController(engine: engine) { [weak self] in
             self?.onboarding.show(activate: true)
@@ -56,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        workspaceSignals?.stop()
         engine?.stop()
     }
 

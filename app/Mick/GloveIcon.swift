@@ -2,23 +2,88 @@ import AppKit
 import MickCore
 
 /// Mick's menu bar glyph: an original boxing glove drawn in code (no film imagery,
-/// decision 13). Template images, so the menu bar tints them. States other than
-/// calm and warning use the calm glove until #5 and #10 give them their own look.
+/// decision 13). Template images, so the menu bar tints them.
+///
+/// - calm: the glove.
+/// - armed: the glove with two motion strokes (a jab on the way).
+/// - glaring: the glove with three heavier strokes and an impact spark.
+/// - warning: the glove with a "!" badge.
+/// Snoozed and paused use the calm glove until #10 gives them their own look.
 enum GloveIcon {
     static let size = NSSize(width: 18, height: 18)
 
     static func image(for icon: MenuBarIcon) -> NSImage {
         let image = NSImage(size: size, flipped: false) { _ in
-            drawGlove()
-            if icon == .warning { drawWarningBadge() }
+            switch icon {
+            case .armed:
+                drawGlove(shiftedBy: -1.5)
+                drawMotionStrokes(count: 2, width: 1.2)
+            case .glaring:
+                drawGlove(shiftedBy: -2)
+                drawMotionStrokes(count: 3, width: 1.5)
+                drawSpark()
+            case .warning:
+                drawGlove()
+                drawWarningBadge()
+            case .calm, .snoozed, .paused:
+                drawGlove()
+            }
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = icon == .warning ? "Mick, hooks not detected" : "Mick"
+        image.accessibilityDescription = description(for: icon)
         return image
     }
 
-    private static func drawGlove() {
+    static func description(for icon: MenuBarIcon) -> String {
+        switch icon {
+        case .calm: "Mick"
+        case .armed: "Mick, armed: you've been sitting a while"
+        case .glaring: "Mick, glaring: you've been sitting way too long"
+        case .warning: "Mick, hooks not detected"
+        case .snoozed: "Mick, snoozed"
+        case .paused: "Mick, paused"
+        }
+    }
+
+    /// Short horizontal strokes to the right of the fist, knocked out where they touch it.
+    private static func drawMotionStrokes(count: Int, width: CGFloat) {
+        let ys: [CGFloat] = count >= 3 ? [14.5, 11.25, 8] : [13, 9.5]
+        let lengths: [CGFloat] = count >= 3 ? [3, 4, 3] : [3, 3]
+        NSColor.black.setStroke()
+        for (y, length) in zip(ys, lengths) {
+            let stroke = NSBezierPath()
+            stroke.move(to: NSPoint(x: 17.5 - length, y: y))
+            stroke.line(to: NSPoint(x: 17.5, y: y))
+            stroke.lineWidth = width
+            stroke.lineCapStyle = .round
+            stroke.stroke()
+        }
+    }
+
+    /// A small four-point spark in the top right corner.
+    private static func drawSpark() {
+        NSColor.black.setFill()
+        let c = NSPoint(x: 15.5, y: 3)
+        let spark = NSBezierPath()
+        spark.move(to: NSPoint(x: c.x, y: c.y + 2.5))
+        spark.line(to: NSPoint(x: c.x + 0.7, y: c.y + 0.7))
+        spark.line(to: NSPoint(x: c.x + 2.5, y: c.y))
+        spark.line(to: NSPoint(x: c.x + 0.7, y: c.y - 0.7))
+        spark.line(to: NSPoint(x: c.x, y: c.y - 2.5))
+        spark.line(to: NSPoint(x: c.x - 0.7, y: c.y - 0.7))
+        spark.line(to: NSPoint(x: c.x - 2.5, y: c.y))
+        spark.line(to: NSPoint(x: c.x - 0.7, y: c.y + 0.7))
+        spark.close()
+        spark.fill()
+    }
+
+    private static func drawGlove(shiftedBy dx: CGFloat = 0) {
+        NSGraphicsContext.current?.saveGraphicsState()
+        defer { NSGraphicsContext.current?.restoreGraphicsState() }
+        let shift = NSAffineTransform()
+        shift.translateX(by: dx, yBy: 0)
+        shift.concat()
         NSColor.black.setFill()
         // Fist: a rounded mitt leaning slightly right.
         let fist = NSBezierPath(roundedRect: NSRect(x: 4, y: 6, width: 11, height: 10.5), xRadius: 5, yRadius: 5)

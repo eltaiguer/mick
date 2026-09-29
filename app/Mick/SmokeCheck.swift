@@ -41,6 +41,15 @@ final class SmokeCheck {
         check(FileManager.default.fileExists(atPath: home.log.path), "log.txt written")
         print("INFO createdHome=\(engine.createdHome) config=\(engine.configOutcome) state=\(engine.stateOutcome) hooks=\(engine.hooks)")
 
+        // Sitting timer (#5): polled, recorded, shown, and the icon states drawn.
+        check(delegate.workspaceSignals.observerCount == 4, "observing sleep/wake and user-switch messages")
+        check(statusItem.detailLine?.hasPrefix("Sitting ") == true, "menu shows the sitting detail line (\(statusItem.detailLine ?? "none"))")
+        let images = [MenuBarIcon.calm, .armed, .glaring, .warning].map { GloveIcon.image(for: $0).tiffRepresentation }
+        check(!images.contains(nil) && Set(images.compactMap { $0 }).count == 4, "calm, armed, glaring and warning icons are drawn and distinct")
+        let savedState = JSONFileStore.load(MickState.self, from: home.state, defaults: .defaults(now: .distantPast), now: Date(), log: MemoryLog()).value
+        check(abs(savedState.lastActiveAt.timeIntervalSince(engine.state.lastActiveAt)) < 0.001, "last_active_at written to state.json")
+        print("INFO icon=\(statusItem.icon.map(\.rawValue) ?? "none") detail=\(statusItem.detailLine ?? "none") sitting_since=\(MickDate.string(from: engine.state.sittingSince))")
+
         guard let hook = delegate.options.smokeHook else {
             finish()
             return

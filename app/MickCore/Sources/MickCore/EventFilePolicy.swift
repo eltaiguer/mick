@@ -58,12 +58,21 @@ public enum HooksStatus: Equatable, Sendable {
     }
 }
 
-/// Menu bar icon states (SPEC §6.4). This ticket decides calm vs warning only; the
-/// sitting timer (#5) and snooze/pause (#10) fill in the rest.
+/// Menu bar icon states (SPEC §6.4). Snoozed and paused arrive with #10.
 public enum MenuBarIcon: String, Equatable, Sendable, CaseIterable {
     case calm, armed, glaring, snoozed, paused, warning
 
+    /// Calm or warning, from the hooks alone.
     public static func current(hooks: HooksStatus) -> MenuBarIcon {
         hooks.showsWarning ? .warning : .calm
+    }
+
+    /// The icon for the whole state. A setup problem outranks everything else, since
+    /// no reminder can fire without the hooks; then glaring, armed, calm.
+    public static func current(hooks: HooksStatus, state: MickState, config: MickConfig, now: Date) -> MenuBarIcon {
+        if hooks.showsWarning { return .warning }
+        if SittingTimer.isGlaring(state, config: config, now: now) { return .glaring }
+        if SittingTimer.isArmed(state, config: config, now: now) { return .armed }
+        return .calm
     }
 }
