@@ -30,7 +30,7 @@ are in the manual checklist at the end.
 | Hosting view: `acceptsFirstMouse` true, `needsPanelToBecomeKey` false | verified |
 | Calling `makeKey` / `makeKeyAndOrderFront` on the panel still leaves it non-key | verified |
 | `orderFrontRegardless()`: panel on screen at the expected window layer (`CGWindowListCopyWindowInfo`), app not active, no key window, frontmost app unchanged | verified at `.statusBar` and `.popUpMenu`, accessory policy, in the test process and in the built app |
-| Same with `.regular` activation policy | verified: showing didn't steal focus either. The non-activating style mask, not the activation policy, is what prevents activation on show |
+| Same with `.regular` activation policy | verified: showing didn't steal focus either, so the non-activating style mask, not the activation policy, is what prevents activation on show. Caveat: that binary was launched from the shell, so LaunchServices never activated it at launch; an `open`ed `.regular` app starts active |
 | Single click on a checkbox toggle and on each plain button changes state exactly once; afterwards the panel isn't key, the app isn't active, frontmost unchanged | verified with synthetic events (see limits) |
 | Anchored under the status item: centered on it, top edge 4 pt below it, clamped to the visible frame | verified in the app (`--prefer-right`) and in unit tests, including left/right clamping, a second display to the right and one below |
 | Status item in notch overflow → top-right fallback | verified for real on this machine (see below) |
@@ -90,7 +90,8 @@ proves little; multi-display is a manual check.
       Keyboard navigation). Revert afterwards.
 - [ ] Fullscreen: put an app fullscreen (Terminal or Safari), trigger "Show panel in 5 s",
       switch to it. Try both `Level:` items in the menu. Then repeat with
-      `--args --regular`. Record which level(s) show over the fullscreen Space and
+      `--args --regular` (it starts active when opened: click back into the fullscreen
+      app before triggering the show). Record which level(s) show over the fullscreen Space and
       whether the policy matters.
 - [ ] Auto-hidden menu bar in fullscreen: the panel goes top-right of that screen.
 - [ ] Multiple displays: status item on each display's menu bar → panel under it on that
