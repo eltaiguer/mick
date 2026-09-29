@@ -8,7 +8,8 @@ import MickCore
 /// - armed: the glove with two motion strokes (a jab on the way).
 /// - glaring: the glove with three heavier strokes and an impact spark.
 /// - warning: the glove with a "!" badge.
-/// Snoozed and paused use the calm glove until #10 gives them their own look.
+/// - snoozed: the glove with a small "z" badge.
+/// - paused: the glove with a pause-bars badge (also quiet hours).
 enum GloveIcon {
     static let size = NSSize(width: 18, height: 18)
 
@@ -25,7 +26,13 @@ enum GloveIcon {
             case .warning:
                 drawGlove()
                 drawWarningBadge()
-            case .calm, .snoozed, .paused:
+            case .snoozed:
+                drawGlove()
+                drawSnoozeBadge()
+            case .paused:
+                drawGlove()
+                drawPauseBadge()
+            case .calm:
                 drawGlove()
             }
             return true
@@ -102,6 +109,42 @@ enum GloveIcon {
         seam.lineWidth = 0.9
         seam.stroke()
         NSGraphicsContext.current?.compositingOperation = .sourceOver
+    }
+
+    /// A round badge in the lower right, knocked out of the glove, with `mark` drawn
+    /// knocked out of the badge.
+    private static func drawBadge(_ mark: () -> Void) {
+        let badge = NSRect(x: 10, y: 0, width: 8, height: 8)
+        NSGraphicsContext.current?.compositingOperation = .clear
+        NSBezierPath(ovalIn: badge.insetBy(dx: -1, dy: -1)).fill()
+        NSGraphicsContext.current?.compositingOperation = .sourceOver
+        NSColor.black.setFill()
+        NSBezierPath(ovalIn: badge).fill()
+        NSGraphicsContext.current?.compositingOperation = .clear
+        mark()
+        NSGraphicsContext.current?.compositingOperation = .sourceOver
+    }
+
+    /// Two pause bars.
+    private static func drawPauseBadge() {
+        drawBadge {
+            NSBezierPath(rect: NSRect(x: 12.4, y: 2.2, width: 1.2, height: 3.6)).fill()
+            NSBezierPath(rect: NSRect(x: 14.4, y: 2.2, width: 1.2, height: 3.6)).fill()
+        }
+    }
+
+    /// A small "z".
+    private static func drawSnoozeBadge() {
+        drawBadge {
+            let z = NSBezierPath()
+            z.move(to: NSPoint(x: 12.2, y: 5.6))
+            z.line(to: NSPoint(x: 15.8, y: 5.6))
+            z.line(to: NSPoint(x: 12.2, y: 2.4))
+            z.line(to: NSPoint(x: 15.8, y: 2.4))
+            z.lineWidth = 1.1
+            z.lineJoinStyle = .miter
+            z.stroke()
+        }
     }
 
     /// A round "!" badge in the lower right, knocked out of the glove.

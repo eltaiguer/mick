@@ -14,14 +14,22 @@ struct LaunchOptions: Equatable {
     /// someone is using the Mac.
     var smokeIdle: Double?
     /// `--smoke-reminder SCENARIO`: with `--smoke` and `--smoke-hook`, run one reminder
-    /// scenario end to end with real hook events (`show-stop`, `short-run`, `tick-stays`).
-    /// The caller prepares an armed state and a short show delay in `MICK_HOME`.
+    /// scenario end to end with real hook events (`show-stop`, `short-run`, `tick-stays`,
+    /// `panel-snooze`, `stretch-now`, `menu-controls`). The caller prepares an armed
+    /// state and a short show delay in `MICK_HOME`.
     var smokeReminder: SmokeReminder?
 
     enum SmokeReminder: String, CaseIterable {
         case showStop = "show-stop"
         case shortRun = "short-run"
         case tickStays = "tick-stays"
+        /// Snooze ▾ → 1 hour on the panel settles it as Snoozed.
+        case panelSnooze = "panel-snooze"
+        /// Stretch now from the menu: a manual panel agent stops don't close.
+        case stretchNow = "stretch-now"
+        /// Pause, resume and snooze from the menu. Ends paused, so a relaunch can
+        /// check the pause persisted.
+        case menuControls = "menu-controls"
     }
 
     enum ParseError: Error, Equatable, CustomStringConvertible {

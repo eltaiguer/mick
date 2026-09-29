@@ -58,14 +58,50 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             setUp.target = self
             menu.addItem(setUp)
         } else {
-            // Placeholder until Mick's voice (#9) lands.
-            let status = NSMenuItem(title: "Mick's in your corner.", action: nil, keyEquivalent: "")
+            // A snooze/pause/resume line shows briefly (§6.4); otherwise a placeholder
+            // until Mick's voice (#9) lands.
+            let status = NSMenuItem(title: engine.noticeLine ?? "Mick's in your corner.", action: nil, keyEquivalent: "")
             status.isEnabled = false
             menu.addItem(status)
         }
         let detail = NSMenuItem(title: engine.sittingDetail, action: nil, keyEquivalent: "")
         detail.isEnabled = false
         menu.addItem(detail)
+        menu.addItem(.separator())
+
+        // Disabled while a reminder is scheduled, visible or settling (§6.4).
+        let stretch = NSMenuItem(title: Self.stretchNowTitle, action: #selector(stretchNow), keyEquivalent: "")
+        stretch.target = self
+        stretch.isEnabled = engine.canStretchNow
+        menu.addItem(stretch)
+
+        let snooze = NSMenuItem(title: Self.snoozeTitle, action: nil, keyEquivalent: "")
+        let options = NSMenu(title: Self.snoozeTitle)
+        options.autoenablesItems = false
+        for option in SnoozeOption.allCases {
+            let item = NSMenuItem(title: option.label, action: #selector(snoozeChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.rawValue
+            options.addItem(item)
+        }
+        if engine.isSnoozed, let until = engine.state.snoozedUntil {
+            options.addItem(.separator())
+            let note = NSMenuItem(title: "Snoozed until \(until.formatted(date: .omitted, time: .shortened))", action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            options.addItem(note)
+            let cancel = NSMenuItem(title: Self.cancelSnoozeTitle, action: #selector(resume), keyEquivalent: "")
+            cancel.target = self
+            options.addItem(cancel)
+        }
+        snooze.submenu = options
+        menu.addItem(snooze)
+
+        let pause = engine.isPaused
+            ? NSMenuItem(title: Self.resumeTitle, action: #selector(resume), keyEquivalent: "")
+            : NSMenuItem(title: Self.pauseTitle, action: #selector(pause), keyEquivalent: "")
+        pause.target = self
+        menu.addItem(pause)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Mick", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -77,6 +113,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// The plain detail line's title.
     var detailLine: String? { item.menu?.items.dropFirst().first?.title }
 
+    static let stretchNowTitle = "Stretch now"
+    static let snoozeTitle = "Snooze"
+    static let pauseTitle = "Pause"
+    static let resumeTitle = "Resume"
+    static let cancelSnoozeTitle = "Cancel snooze"
+
+    /// The top-level item with this title, from a fresh rebuild (the smoke check drives
+    /// the menu through it).
+    func menuItem(_ title: String) -> NSMenuItem? {
+        populate(menu)
+        return menu.items.first { $0.title == title }
+    }
+
+    /// Fires an enabled menu item's action, the way choosing it does.
+    @discardableResult
+    func choose(_ item: NSMenuItem) -> Bool {
+        guard item.isEnabled, let menu = item.menu else { return false }
+        let index = menu.index(of: item)
+        guard index >= 0 else { return false }
+        menu.performActionForItem(at: index)
+        return true
+    }
+
+    @objc private func stretchNow() { engine.stretchNow() }
+    @objc private func snoozeChosen(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let option = SnoozeOption(rawValue: raw) else { return }
+        engine.snooze(option)
+    }
+    @objc private func pause() { engine.pause() }
+    @objc private func resume() { engine.resume() }
     @objc private func setUp() { onSetUp() }
     @objc private func quit() { NSApp.terminate(nil) }
 }

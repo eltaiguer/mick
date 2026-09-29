@@ -58,7 +58,7 @@ public enum HooksStatus: Equatable, Sendable {
     }
 }
 
-/// Menu bar icon states (SPEC §6.4). Snoozed and paused arrive with #10.
+/// Menu bar icon states (SPEC §6.4).
 public enum MenuBarIcon: String, Equatable, Sendable, CaseIterable {
     case calm, armed, glaring, snoozed, paused, warning
 
@@ -68,9 +68,13 @@ public enum MenuBarIcon: String, Equatable, Sendable, CaseIterable {
     }
 
     /// The icon for the whole state. A setup problem outranks everything else, since
-    /// no reminder can fire without the hooks; then glaring, armed, calm.
-    public static func current(hooks: HooksStatus, state: MickState, config: MickConfig, now: Date) -> MenuBarIcon {
+    /// no reminder can fire without the hooks; then paused (a pause or quiet hours),
+    /// snoozed, glaring, armed, calm. Paused beats snoozed because it has no end time.
+    public static func current(hooks: HooksStatus, state: MickState, config: MickConfig, now: Date,
+                               calendar: Calendar = .current) -> MenuBarIcon {
         if hooks.showsWarning { return .warning }
+        if Controls.isPausedOrQuiet(state, config: config, now: now, calendar: calendar) { return .paused }
+        if Controls.isSnoozed(state, now: now) { return .snoozed }
         if SittingTimer.isGlaring(state, config: config, now: now) { return .glaring }
         if SittingTimer.isArmed(state, config: config, now: now) { return .armed }
         return .calm
