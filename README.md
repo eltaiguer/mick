@@ -15,44 +15,75 @@ Everything stays on your Mac: no accounts, no network, no telemetry. The Claude 
 plugin records only an event name, a timestamp, the session id, the working directory and
 the notification type. Prompts and agent output are never read or stored.
 
-The full product spec is [SPEC.md](SPEC.md). Status: v1, built from source for personal use.
+The full product spec is [SPEC.md](SPEC.md). Status: v1. There's no prebuilt download yet;
+you build it from source on your own Mac, which takes about five minutes.
 
 ## Requirements
 
-- macOS 26 and Xcode 26
-- Claude Code
-- An Apple Development signing certificate (free with an Apple ID: Xcode → Settings →
-  Accounts → Manage Certificates). Open at login needs a signed app.
+- macOS 26 (Tahoe) and Xcode 26, from the Mac App Store
+- [Claude Code](https://claude.com/claude-code)
+- A free Apple Development signing certificate. Mick has to be signed for open at login
+  to work, and you sign it yourself, so you don't need a paid developer account.
 
 ## Install
 
-1. Build Mick, signed with your Apple Development certificate and the hardened runtime,
-   and copy it to `/Applications`:
+1. **One-time Xcode setup.** Open Xcode once so it finishes installing its components, then
+   point the command line tools at it and accept the license:
 
    ```sh
+   sudo xcode-select -s /Applications/Xcode.app
+   sudo xcodebuild -license accept
+   ```
+
+2. **Create a signing certificate** if you don't have one. In Xcode, go to Settings →
+   Accounts, click + to add your Apple ID, select the team "(Personal Team)", click
+   Manage Certificates…, then + → Apple Development. To check that it worked:
+
+   ```sh
+   security find-identity -v -p codesigning   # should list an "Apple Development" identity
+   ```
+
+3. **Get the code, then build and install Mick:**
+
+   ```sh
+   git clone https://github.com/eltaiguer/mick.git
+   cd mick
    scripts/install.sh
    ```
 
-   It picks the first "Apple Development" identity in your keychain; pass
-   `--identity <SHA-1>` to choose one (`security find-identity -v -p codesigning` lists
-   them). Quit Mick first if you're updating it.
+   This builds a signed Release build and copies it to `/Applications`. It uses the first
+   "Apple Development" identity in your keychain; pass `--identity <SHA-1>` to pick a
+   different one. If macOS asks whether `codesign` can use your keychain, click Always Allow.
 
-2. Open it: `open /Applications/Mick.app`. Mick lives in the menu bar (a boxing glove)
+4. **Open it:** `open /Applications/Mick.app`. Mick lives in the menu bar as a boxing glove
    and has no Dock icon. Onboarding opens on first launch. Open at login is on by default;
    if macOS asks, approve Mick in System Settings → General → Login Items.
 
-3. Install the Claude Code plugin. This repo is its own plugin marketplace. In Claude Code:
+5. **Install the Claude Code plugin.** This repo is its own plugin marketplace. In Claude Code:
 
    ```
    /plugin marketplace add eltaiguer/mick
    /plugin install mick@mick
    ```
 
-   Onboarding shows both commands with copy buttons, and ticks "Waiting for your first
-   Claude Code prompt…" once the first event arrives.
+   Onboarding shows both commands with copy buttons. Once your first prompt reaches Mick, it
+   ticks off "Waiting for your first Claude Code prompt…".
 
 That's it. Work normally. After 50 minutes of sitting the glove turns "armed", and the next
 agent run that's still going 30 seconds after you prompt brings Mick out.
+
+## Updating
+
+Quit Mick from its menu (Quit Mick), then:
+
+```sh
+cd mick
+git pull
+scripts/install.sh
+open /Applications/Mick.app
+```
+
+In Claude Code, `/plugin marketplace update mick` picks up plugin changes.
 
 ## Using it
 
@@ -104,5 +135,5 @@ tests/acceptance/check-matrix.sh   # docs/acceptance.md covers every §15 criter
 tests/scripts/test-review.sh       # scripts/review.sh
 ```
 
-MIT licensed. Mick's lines are original writing, in the spirit of a certain trainer; no
+[MIT licensed](LICENSE). Mick's lines are original writing, in the spirit of a certain trainer; no
 film quotes, stills, likeness or artwork.
