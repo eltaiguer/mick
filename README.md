@@ -135,5 +135,6 @@ tests/acceptance/check-matrix.sh   # docs/acceptance.md covers every §15 criter
 tests/scripts/test-review.sh       # scripts/review.sh
 ```
 
-[MIT licensed](LICENSE). Mick's lines are original writing, in the spirit of a certain trainer; no
-film quotes, stills, likeness or artwork.
+The code is [MIT licensed](LICENSE). The app icon is a still from *Rocky* (1976), and the film
+lines belong to their rights holders. They're here as a fan tribute and aren't covered by the
+MIT license.
